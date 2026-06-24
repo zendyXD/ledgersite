@@ -1,0 +1,1 @@
+app/api/proofs/[id]/extract/route.ts(102,5): error TS2353: Object literal may only specify known properties, and 'guessed_category' does not exist in type '{ extracted_party: string | null; extracted_amount: number | null; extracted_date: string | null; extracted_text: string | null; }'.
