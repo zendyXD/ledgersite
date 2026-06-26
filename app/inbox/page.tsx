@@ -25,6 +25,8 @@ type Proof = {
   extracted_entry_type?: string | null;
   project_name?: string | null;
   invoice_number?: string | null;
+  source?: string | null;
+  metadata?: any;
 };
 
 type LedgerEntry = {
@@ -656,9 +658,15 @@ export default function InboxPage() {
                         </span>
                       ))}
                     </div>
-                    <p className="mt-1 text-sm font-medium text-slate-900">{proof.original_name || "Unnamed file"}</p>
                   </div>
-                  <span className="text-xs text-slate-400">{new Date(proof.created_at).toLocaleString()}</span>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-xs text-slate-400">{new Date(proof.created_at).toLocaleString()}</span>
+                    {proof.source === 'whatsapp' && (
+                      <span className="inline-flex items-center rounded-full bg-[#25D366]/10 px-2 py-0.5 text-[10px] font-bold text-[#128C7E] border border-[#25D366]/20">
+                        WhatsApp
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {proof.comment && <p className="mt-2 text-sm text-slate-700">{proof.comment}</p>}

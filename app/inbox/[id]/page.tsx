@@ -23,16 +23,18 @@ type Proof = {
   project_name?: string | null;
   invoice_number?: string | null;
   extraction_confidence?: Record<string, string> | null;
+  source?: string | null;
+  metadata?: any;
 };
 
 export default function SingleProofReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
-  
+
   const isQueueMode = searchParams.get("queueMode") === "true";
   const queueCount = searchParams.get("queueCount");
-  
+
   // Safely unwrap Next.js 15 params promise
   const resolvedParams = use(params);
   const proofId = parseInt(resolvedParams.id, 10);
@@ -72,10 +74,10 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
       setLoading(true);
       setMessage("");
       setStatus("idle");
-      
+
       const res = await fetch(`/api/proofs/${proofId}`);
       const data = await res.json();
-      
+
       // FIX: Instead of throwing an unhandled exception that causes the red screen modal,
       // catch the 404 or 500 error status codes and display our styled component view message.
       if (!res.ok) {
@@ -84,7 +86,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
         setStatus("error");
         return; // Exit safely
       }
-      
+
       let loadedProof = null;
       if (data && data.proof) {
         loadedProof = data.proof;
@@ -102,30 +104,30 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
           if (inboxRes.ok) {
             const inboxData = await inboxRes.json();
             const allProofs = inboxData.proofs || [];
-            
+
             const dups: { proof: Proof; score: "possible" | "likely"; reasons: string[] }[] = [];
-            
+
             for (const p of allProofs) {
               if (p.id === loadedProof.id) continue;
-              
+
               const isGeneric = /^(image|photo|screenshot|img_.*|whatsapp image.*)\.(png|jpg|jpeg|webp|heic)$/i.test(loadedProof.original_name || "");
               const sameName = !isGeneric && loadedProof.original_name && p.original_name && loadedProof.original_name === p.original_name;
-              
+
               const pAmount = loadedProof.extracted_amount;
               const pParty = loadedProof.extracted_party?.toLowerCase().trim();
               const pDate = loadedProof.extracted_date;
               const pInvoice = loadedProof.invoice_number?.toLowerCase().trim();
-              
+
               const oAmount = p.extracted_amount;
               const oParty = p.extracted_party?.toLowerCase().trim();
               const oDate = p.extracted_date;
               const oInvoice = p.invoice_number?.toLowerCase().trim();
-              
+
               const sameAmount = pAmount != null && pAmount === oAmount;
               const sameParty = !!pParty && pParty === oParty;
               const sameDate = !!pDate && pDate === oDate;
               const sameInvoice = !!pInvoice && pInvoice === oInvoice;
-              
+
               const reasons: string[] = [];
               if (sameAmount) reasons.push("same amount");
               if (sameParty) reasons.push("same party");
@@ -134,7 +136,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
               if (sameName) reasons.push("same original filename");
 
               let score: "none" | "possible" | "likely" = "none";
-              
+
               if (sameInvoice) {
                 score = "likely";
               } else if (sameAmount && sameParty && sameDate) {
@@ -146,19 +148,19 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
               } else if (sameName) {
                 score = "possible";
               }
-              
+
               if (score !== "none") {
                 dups.push({ proof: p, score, reasons });
               }
             }
-            
+
             dups.sort((a, b) => {
               if (a.score !== b.score) return a.score === "likely" ? -1 : 1;
               if (a.reasons.length !== b.reasons.length) return b.reasons.length - a.reasons.length;
               return new Date(b.proof.created_at).getTime() - new Date(a.proof.created_at).getTime();
             });
-            
-            
+
+
             setDuplicates(dups);
           }
         } catch (e) {
@@ -213,7 +215,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
   }
 
   async function handleSaveExtracted() {
-    const hasImportantChanges = 
+    const hasImportantChanges =
       editParty !== (proof?.extracted_party || "") ||
       editAmount !== (proof?.extracted_amount?.toString() || "") ||
       editDate !== (proof?.extracted_date || "") ||
@@ -242,12 +244,12 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to save data");
-      
+
       setProof(data.proof);
       setIsEditing(false);
       setMessage("Fields updated successfully.");
       setStatus("done");
-      
+
       // Refresh history to show the "edited" event
       try {
         const histRes = await fetch(`/api/activity?entity_type=proof&entity_id=${proofId}`);
@@ -273,7 +275,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
       const res = await fetch(`/api/proofs/${proof.id}/unlink`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to unlink proof");
-      
+
       setMessage("Proof unlinked successfully.");
       setStatus("done");
       setShowUnlinkConfirm(false);
@@ -289,7 +291,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
 
   async function handleCreateLedgerDraft() {
     if (!proof) return;
-    
+
     let splitAllocations: any[] = [];
     if (isSplit) {
       splitAllocations = splitRows.filter(r => r.worker.trim() && r.amount > 0);
@@ -308,14 +310,14 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
 
     try {
       setDraftLoading(true);
-      const res = await fetch(`/api/proofs/${proof.id}/create-ledger`, { 
+      const res = await fetch(`/api/proofs/${proof.id}/create-ledger`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_split: isSplit, split_allocations: splitAllocations })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to generate entry");
-      
+
       setMessage("Ledger draft created successfully!");
       setStatus("done");
       await loadSingleProof();
@@ -371,7 +373,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to update status");
-      
+
       setMessage(`Proof marked as ${newStatus.replace("_", " ")}.`);
       setStatus("done");
       await loadSingleProof();
@@ -418,7 +420,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
 
   const flaggedFields = useMemo(() => {
     if (!proof) return [];
-    
+
     const check = (name: string, label: string, value: any, isWeak: boolean) => {
       if (manuallyReviewedFields.has(name)) return null;
       if (value === null || value === undefined || value === "") return { name, label, status: "missing", value: "—" };
@@ -463,7 +465,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
   return (
     <main className="min-h-screen bg-slate-100 text-slate-900 p-4 md:p-8">
       <div className="max-w-5xl mx-auto space-y-6">
-        
+
         {/* Top Breadcrumb Navigation */}
         <div className="flex items-center justify-between">
           <div>
@@ -490,7 +492,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
 
         {/* Workspace Layout Split */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          
+
           {/* Column A: Document File View Attachment */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
@@ -518,24 +520,23 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
           {/* Column B: Structured Fields Form Card */}
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col">
             {/* 1. Status & Alerts Area */}
-            <div className={`p-4 border-b ${
-              proof.linked_entry_id ? "bg-blue-50 border-blue-200 text-blue-800 rounded-t-2xl" :
-              proof.processing_status === "reviewed" ? "bg-teal-50 border-teal-200 text-teal-800 rounded-t-2xl" :
-              isReady ? "bg-emerald-50 border-emerald-200 text-emerald-800 rounded-t-2xl" : "bg-amber-50 border-amber-200 text-amber-800 rounded-t-2xl"
-            }`}>
+            <div className={`p-4 border-b ${proof.linked_entry_id ? "bg-blue-50 border-blue-200 text-blue-800 rounded-t-2xl" :
+                proof.processing_status === "reviewed" ? "bg-teal-50 border-teal-200 text-teal-800 rounded-t-2xl" :
+                  isReady ? "bg-emerald-50 border-emerald-200 text-emerald-800 rounded-t-2xl" : "bg-amber-50 border-amber-200 text-amber-800 rounded-t-2xl"
+              }`}>
               <h2 className="text-lg font-bold">
-                {proof.linked_entry_id ? "Linked to Ledger" : 
-                 proof.processing_status === "reviewed" ? "Reviewed" :
-                 isReady ? "Ready for Ledger" : "Needs Review"}
+                {proof.linked_entry_id ? "Linked to Ledger" :
+                  proof.processing_status === "reviewed" ? "Reviewed" :
+                    isReady ? "Ready for Ledger" : "Needs Review"}
               </h2>
               <p className="text-sm mt-1 opacity-80">
-                {proof.linked_entry_id 
-                  ? `This proof is securely linked to Ledger Entry #${proof.linked_entry_id}.` 
+                {proof.linked_entry_id
+                  ? `This proof is securely linked to Ledger Entry #${proof.linked_entry_id}.`
                   : proof.processing_status === "reviewed"
-                  ? "This proof has been marked as reviewed. You can create a ledger draft when ready."
-                  : isReady 
-                  ? "All required fields are present. You can now create a ledger draft." 
-                  : "Please fill out the missing fields below to proceed."}
+                    ? "This proof has been marked as reviewed. You can create a ledger draft when ready."
+                    : isReady
+                      ? "All required fields are present. You can now create a ledger draft."
+                      : "Please fill out the missing fields below to proceed."}
               </p>
             </div>
 
@@ -546,7 +547,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                     ⚠️ {duplicates[0].score === "likely" ? "Likely" : "Possible"} Duplicate Detected
                   </p>
                   <p className={`text-sm mt-1 ${duplicates[0].score === "likely" ? "text-red-700" : "text-orange-700"}`}>
-                    This looks very similar to <Link href={`/inbox/${duplicates[0].proof.id}`} className="font-bold underline hover:opacity-80">Proof #{duplicates[0].proof.id}</Link>. 
+                    This looks very similar to <Link href={`/inbox/${duplicates[0].proof.id}`} className="font-bold underline hover:opacity-80">Proof #{duplicates[0].proof.id}</Link>.
                   </p>
                   <p className={`text-xs mt-2 font-medium ${duplicates[0].score === "likely" ? "text-red-800" : "text-orange-800"}`}>
                     Matches on: {duplicates[0].reasons.join(", ")}
@@ -602,117 +603,129 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                 </div>
               )}
 
+              {proof.source === 'whatsapp' && (
+                <div className="bg-[#25D366]/5 rounded-xl p-4 border border-[#25D366]/20 flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#25D366]/20 text-[#128C7E]">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" /></svg>
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold uppercase tracking-wide text-[#128C7E]">Received via WhatsApp</span>
+                    <p className="text-sm text-slate-800 font-medium">Sender: {proof.metadata?.whatsapp_sender || "Unknown Number"}</p>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <h3 className="text-base font-bold text-slate-900">Extracted Information</h3>
                 <p className="text-xs text-slate-500 mt-0.5">Verify the fields match the document</p>
               </div>
 
-            {!isEditing ? (
-              // Display Form View Mode
-              <div className="space-y-4 pt-2">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-xl border bg-slate-50 p-3 col-span-2">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Party / Vendor</span>
-                    <p className="text-lg font-bold text-slate-900 mt-0.5">{proof.extracted_party || "—"}</p>
+              {!isEditing ? (
+                // Display Form View Mode
+                <div className="space-y-4 pt-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl border bg-slate-50 p-3 col-span-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Party / Vendor</span>
+                      <p className="text-lg font-bold text-slate-900 mt-0.5">{proof.extracted_party || "—"}</p>
+                    </div>
+                    <div className="rounded-xl border bg-emerald-50 border-emerald-100 p-3">
+                      <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Amount (₹)</span>
+                      <p className="text-lg font-bold text-emerald-900 mt-0.5">
+                        {proof.extracted_amount != null ? `₹${proof.extracted_amount.toFixed(2)}` : "—"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border bg-slate-50 p-3 col-span-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project / Site</span>
+                      <p className="text-sm font-semibold text-slate-900 mt-0.5">{proof.project_name || "—"}</p>
+                    </div>
+                    <div className="rounded-xl border bg-slate-50 p-3 flex flex-col justify-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date</span>
+                      <p className="text-sm font-semibold text-slate-900 mt-0.5">{proof.extracted_date || "—"}</p>
+                    </div>
+                    <div className="rounded-xl border bg-slate-50 p-3">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Category</span>
+                      <p className="text-sm font-semibold text-slate-900 mt-0.5 capitalize">{proof.extracted_category || "—"}</p>
+                    </div>
+                    <div className="rounded-xl border bg-slate-50 p-3">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Type</span>
+                      <p className="text-sm font-semibold text-slate-900 mt-0.5 capitalize">{proof.extracted_entry_type || "—"}</p>
+                    </div>
                   </div>
-                  <div className="rounded-xl border bg-emerald-50 border-emerald-100 p-3">
-                    <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Amount (₹)</span>
-                    <p className="text-lg font-bold text-emerald-900 mt-0.5">
-                      {proof.extracted_amount != null ? `₹${proof.extracted_amount.toFixed(2)}` : "—"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border bg-slate-50 p-3 col-span-2">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project / Site</span>
-                    <p className="text-sm font-semibold text-slate-900 mt-0.5">{proof.project_name || "—"}</p>
-                  </div>
-                  <div className="rounded-xl border bg-slate-50 p-3 flex flex-col justify-center">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date</span>
-                    <p className="text-sm font-semibold text-slate-900 mt-0.5">{proof.extracted_date || "—"}</p>
-                  </div>
-                  <div className="rounded-xl border bg-slate-50 p-3">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Category</span>
-                    <p className="text-sm font-semibold text-slate-900 mt-0.5 capitalize">{proof.extracted_category || "—"}</p>
-                  </div>
-                  <div className="rounded-xl border bg-slate-50 p-3">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Type</span>
-                    <p className="text-sm font-semibold text-slate-900 mt-0.5 capitalize">{proof.extracted_entry_type || "—"}</p>
-                  </div>
-                </div>
 
-                <div className="flex gap-3">
-                  <button type="button" onClick={startEditing} className="flex-1 rounded-xl border border-slate-300 bg-white py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition-colors">
-                    Edit Extracted Metadata Fields
-                  </button>
-                  <button type="button" onClick={handleReExtract} disabled={extracting} className="rounded-xl border border-teal-300 bg-teal-50 px-4 py-2.5 text-xs font-semibold text-teal-800 hover:bg-teal-100 transition-colors disabled:opacity-50">
-                    {extracting ? "Extracting..." : "Re-Extract with AI"}
-                  </button>
+                  <div className="flex gap-3">
+                    <button type="button" onClick={startEditing} className="flex-1 rounded-xl border border-slate-300 bg-white py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition-colors">
+                      Edit Extracted Metadata Fields
+                    </button>
+                    <button type="button" onClick={handleReExtract} disabled={extracting} className="rounded-xl border border-teal-300 bg-teal-50 px-4 py-2.5 text-xs font-semibold text-teal-800 hover:bg-teal-100 transition-colors disabled:opacity-50">
+                      {extracting ? "Extracting..." : "Re-Extract with AI"}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              // Display Edit Form Workspace Input Fields
-              <div className="space-y-4 border-t pt-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Party / Vendor Name</label>
-                  <input type="text" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none" value={editParty} onChange={(e) => setEditParty(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Project / Site</label>
-                  <input type="text" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none" value={editProject} onChange={(e) => setEditProject(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Amount (₹)</label>
-                  <input type="number" step="0.01" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Transaction Date</label>
-                  <input type="date" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+              ) : (
+                // Display Edit Form Workspace Input Fields
+                <div className="space-y-4 border-t pt-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Category</label>
-                    <select className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none bg-white" value={editCategory} onChange={(e) => setEditCategory(e.target.value)}>
-                      <option value="">-- Select --</option>
-                      <option value="labour">Labour</option>
-                      <option value="material">Material</option>
-                      <option value="transport">Transport</option>
-                      <option value="rent">Rent</option>
-                      <option value="food">Food</option>
-                      <option value="fuel">Fuel</option>
-                      <option value="equipment">Equipment</option>
-                      <option value="subcontract">Subcontract</option>
-                      <option value="client_payment">Client Payment</option>
-                      <option value="misc">Misc</option>
-                    </select>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Party / Vendor Name</label>
+                    <input type="text" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none" value={editParty} onChange={(e) => setEditParty(e.target.value)} />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Type</label>
-                    <select className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none bg-white" value={editType} onChange={(e) => setEditType(e.target.value)}>
-                      <option value="">-- Select --</option>
-                      <option value="expense">Expense</option>
-                      <option value="income">Income</option>
-                    </select>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Project / Site</label>
+                    <input type="text" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none" value={editProject} onChange={(e) => setEditProject(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Amount (₹)</label>
+                    <input type="number" step="0.01" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Transaction Date</label>
+                    <input type="date" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Category</label>
+                      <select className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none bg-white" value={editCategory} onChange={(e) => setEditCategory(e.target.value)}>
+                        <option value="">-- Select --</option>
+                        <option value="labour">Labour</option>
+                        <option value="material">Material</option>
+                        <option value="transport">Transport</option>
+                        <option value="rent">Rent</option>
+                        <option value="food">Food</option>
+                        <option value="fuel">Fuel</option>
+                        <option value="equipment">Equipment</option>
+                        <option value="subcontract">Subcontract</option>
+                        <option value="client_payment">Client Payment</option>
+                        <option value="misc">Misc</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Type</label>
+                      <select className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none bg-white" value={editType} onChange={(e) => setEditType(e.target.value)}>
+                        <option value="">-- Select --</option>
+                        <option value="expense">Expense</option>
+                        <option value="income">Income</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end pt-2">
+                    <button type="button" onClick={() => setIsEditing(false)} disabled={saving} className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                      Cancel
+                    </button>
+                    <button type="button" onClick={handleSaveExtracted} disabled={saving} className="rounded-xl bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50">
+                      {saving ? "Saving Changes..." : "Save Fields"}
+                    </button>
                   </div>
                 </div>
-                <div className="flex gap-2 justify-end pt-2">
-                  <button type="button" onClick={() => setIsEditing(false)} disabled={saving} className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-                    Cancel
-                  </button>
-                  <button type="button" onClick={handleSaveExtracted} disabled={saving} className="rounded-xl bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50">
-                    {saving ? "Saving Changes..." : "Save Fields"}
-                  </button>
-                </div>
-              </div>
-            )}
+              )}
 
-            {proof.extracted_text && (
-              <details className="group rounded-xl border border-slate-200 bg-slate-50 p-4 [&_summary::-webkit-details-marker]:hidden">
-                <summary className="cursor-pointer text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center justify-between outline-none">
-                  Full OCR Raw Extracted Text
-                  <span className="group-open:rotate-180 transition-transform">▼</span>
-                </summary>
-                <p className="mt-3 text-xs text-slate-600 leading-relaxed whitespace-pre-wrap border-t border-slate-200 pt-3">{proof.extracted_text}</p>
-              </details>
-            )}
+              {proof.extracted_text && (
+                <details className="group rounded-xl border border-slate-200 bg-slate-50 p-4 [&_summary::-webkit-details-marker]:hidden">
+                  <summary className="cursor-pointer text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center justify-between outline-none">
+                    Full OCR Raw Extracted Text
+                    <span className="group-open:rotate-180 transition-transform">▼</span>
+                  </summary>
+                  <p className="mt-3 text-xs text-slate-600 leading-relaxed whitespace-pre-wrap border-t border-slate-200 pt-3">{proof.extracted_text}</p>
+                </details>
+              )}
             </div>
 
             {/* 3. Primary Actions & Danger Zone */}
@@ -733,59 +746,59 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
               ) : (
                 <div className="space-y-3">
                   <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Next Step</h3>
-                
-                {proof.linked_entry_id ? (
-                  <>
-                    <div className="flex gap-3">
-                      <Link href={`/ledger?highlight=${proof.linked_entry_id}`} className="flex-1 text-center flex items-center justify-center rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white hover:bg-emerald-700 transition-colors shadow-sm">
-                        Go to Ledger Entry #{proof.linked_entry_id} →
-                      </Link>
-                      <button 
-                        type="button"
-                        onClick={() => setShowUnlinkConfirm(true)} 
-                        disabled={unlinking} 
-                        className="rounded-xl border border-slate-300 bg-white text-slate-700 px-6 text-sm font-bold hover:bg-slate-100 disabled:opacity-50 transition-colors shadow-sm"
-                      >
-                        {unlinking ? "..." : "Unlink"}
-                      </button>
-                    </div>
-                    
-                    {showUnlinkConfirm && (
-                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                        <p className="text-sm font-bold text-amber-900">Unlink this proof from the ledger draft?</p>
-                        <p className="mt-1 text-sm text-amber-800">
-                          This will safely remove the connection. The ledger draft will remain intact, but this proof can then be deleted or linked to something else.
-                        </p>
-                        <div className="mt-4 flex gap-2 justify-end">
-                          <button type="button" onClick={() => setShowUnlinkConfirm(false)} disabled={unlinking} className="rounded-lg px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-200 bg-slate-100 border border-slate-300">
-                            Cancel
-                          </button>
-                          <button type="button" onClick={handleUnlink} disabled={unlinking} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-700">
-                            {unlinking ? "Unlinking..." : "Yes, Unlink"}
-                          </button>
-                          <button type="button" onClick={handleDelete} disabled={deleting} className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
-                            {deleting ? "Deleting..." : "Delete entirely"}
-                          </button>
-                        </div>
+
+                  {proof.linked_entry_id ? (
+                    <>
+                      <div className="flex gap-3">
+                        <Link href={`/ledger?highlight=${proof.linked_entry_id}`} className="flex-1 text-center flex items-center justify-center rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white hover:bg-emerald-700 transition-colors shadow-sm">
+                          Go to Ledger Entry #{proof.linked_entry_id} →
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setShowUnlinkConfirm(true)}
+                          disabled={unlinking}
+                          className="rounded-xl border border-slate-300 bg-white text-slate-700 px-6 text-sm font-bold hover:bg-slate-100 disabled:opacity-50 transition-colors shadow-sm"
+                        >
+                          {unlinking ? "..." : "Unlink"}
+                        </button>
                       </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="mb-6 p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={isSplit} 
-                          onChange={e => setIsSplit(e.target.checked)} 
-                          className="w-5 h-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500" 
-                        />
-                        <div className="flex flex-col">
-                          <span className="text-sm font-bold text-slate-800">Mark as Split Expense</span>
-                          <span className="text-xs text-slate-500 mt-0.5">You can split any expense type, not just labour/subcontract.</span>
+
+                      {showUnlinkConfirm && (
+                        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                          <p className="text-sm font-bold text-amber-900">Unlink this proof from the ledger draft?</p>
+                          <p className="mt-1 text-sm text-amber-800">
+                            This will safely remove the connection. The ledger draft will remain intact, but this proof can then be deleted or linked to something else.
+                          </p>
+                          <div className="mt-4 flex gap-2 justify-end">
+                            <button type="button" onClick={() => setShowUnlinkConfirm(false)} disabled={unlinking} className="rounded-lg px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-200 bg-slate-100 border border-slate-300">
+                              Cancel
+                            </button>
+                            <button type="button" onClick={handleUnlink} disabled={unlinking} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-700">
+                              {unlinking ? "Unlinking..." : "Yes, Unlink"}
+                            </button>
+                            <button type="button" onClick={handleDelete} disabled={deleting} className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
+                              {deleting ? "Deleting..." : "Delete entirely"}
+                            </button>
+                          </div>
                         </div>
-                      </label>
-                        
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="mb-6 p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isSplit}
+                            onChange={e => setIsSplit(e.target.checked)}
+                            className="w-5 h-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                          />
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-slate-800">Mark as Split Expense</span>
+                            <span className="text-xs text-slate-500 mt-0.5">You can split any expense type, not just labour/subcontract.</span>
+                          </div>
+                        </label>
+
                         {isSplit && (
                           <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
                             <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-200">
@@ -800,14 +813,14 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                                 </span>
                               </div>
                             </div>
-                            
+
                             <div className="space-y-3">
                               {splitRows.map((row, index) => (
                                 <div key={row.id} className="flex gap-2 items-start">
                                   <div className="flex-1 space-y-2">
-                                    <input 
-                                      type="text" placeholder="Worker Name" 
-                                      className="w-full text-sm rounded border-slate-300 px-2 py-1.5 focus:ring-1 focus:ring-teal-500 outline-none" 
+                                    <input
+                                      type="text" placeholder="Worker Name"
+                                      className="w-full text-sm rounded border-slate-300 px-2 py-1.5 focus:ring-1 focus:ring-teal-500 outline-none"
                                       value={row.worker} onChange={e => {
                                         const newRows = [...splitRows];
                                         newRows[index].worker = e.target.value;
@@ -815,18 +828,18 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                                       }}
                                     />
                                     <div className="flex gap-2">
-                                      <input 
-                                        type="text" placeholder="Role (e.g., Mason)" 
-                                        className="w-1/2 text-sm rounded border-slate-300 px-2 py-1.5 focus:ring-1 focus:ring-teal-500 outline-none" 
+                                      <input
+                                        type="text" placeholder="Role (e.g., Mason)"
+                                        className="w-1/2 text-sm rounded border-slate-300 px-2 py-1.5 focus:ring-1 focus:ring-teal-500 outline-none"
                                         value={row.role} onChange={e => {
                                           const newRows = [...splitRows];
                                           newRows[index].role = e.target.value;
                                           setSplitRows(newRows);
                                         }}
                                       />
-                                      <input 
-                                        type="number" placeholder="Amount" 
-                                        className="w-1/2 text-sm rounded border-slate-300 px-2 py-1.5 focus:ring-1 focus:ring-teal-500 outline-none" 
+                                      <input
+                                        type="number" placeholder="Amount"
+                                        className="w-1/2 text-sm rounded border-slate-300 px-2 py-1.5 focus:ring-1 focus:ring-teal-500 outline-none"
                                         value={row.amount || ""} onChange={e => {
                                           const newRows = [...splitRows];
                                           newRows[index].amount = parseFloat(e.target.value) || 0;
@@ -835,7 +848,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                                       />
                                     </div>
                                   </div>
-                                  <button 
+                                  <button
                                     onClick={() => setSplitRows(splitRows.filter((_, i) => i !== index))}
                                     className="p-1.5 text-slate-400 hover:text-red-600"
                                     title="Remove row"
@@ -845,7 +858,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                                 </div>
                               ))}
                             </div>
-                            <button 
+                            <button
                               onClick={() => setSplitRows([...splitRows, { id: `row_${Date.now()}`, worker: "", role: "", amount: 0, note: "" }])}
                               className="text-xs font-semibold text-teal-700 hover:text-teal-800"
                             >
@@ -853,35 +866,35 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                             </button>
                           </div>
                         )}
-                    </div>
-                    
-                    <p className="text-xs text-slate-500 mb-2">Reviewed means checked by you. It does not create a ledger draft.</p>
-                    <div className="flex gap-3">
-                      {proof.processing_status !== "reviewed" && (
+                      </div>
+
+                      <p className="text-xs text-slate-500 mb-2">Reviewed means checked by you. It does not create a ledger draft.</p>
+                      <div className="flex gap-3">
+                        {proof.processing_status !== "reviewed" && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetReviewStatus("reviewed")}
+                            disabled={markingReviewed || draftLoading}
+                            className="rounded-xl border border-slate-300 bg-white text-slate-700 px-6 py-3 text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
+                          >
+                            {markingReviewed ? "..." : "Mark as Reviewed"}
+                          </button>
+                        )}
+
                         <button
                           type="button"
-                          onClick={() => handleSetReviewStatus("reviewed")}
-                          disabled={markingReviewed || draftLoading}
-                          className="rounded-xl border border-slate-300 bg-white text-slate-700 px-6 py-3 text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
+                          onClick={handleCreateLedgerDraft}
+                          disabled={draftLoading || !isReady || (isSplit && (proof.extracted_amount || 0) - splitRows.reduce((acc, r) => acc + r.amount, 0) !== 0)}
+                          title={!isReady ? "Party, amount, and date must be filled" : (isSplit && (proof.extracted_amount || 0) - splitRows.reduce((acc, r) => acc + r.amount, 0) !== 0) ? "Allocated amounts must match total" : ""}
+                          className="flex-1 rounded-xl bg-slate-900 py-3 text-base font-bold text-white hover:bg-slate-800 disabled:opacity-40 transition-opacity shadow-sm"
                         >
-                          {markingReviewed ? "..." : "Mark as Reviewed"}
+                          {draftLoading ? "Generating..." : "Create Ledger Draft Entry →"}
                         </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={handleCreateLedgerDraft}
-                        disabled={draftLoading || !isReady || (isSplit && (proof.extracted_amount || 0) - splitRows.reduce((acc, r) => acc + r.amount, 0) !== 0)}
-                        title={!isReady ? "Party, amount, and date must be filled" : (isSplit && (proof.extracted_amount || 0) - splitRows.reduce((acc, r) => acc + r.amount, 0) !== 0) ? "Allocated amounts must match total" : ""}
-                        className="flex-1 rounded-xl bg-slate-900 py-3 text-base font-bold text-white hover:bg-slate-800 disabled:opacity-40 transition-opacity shadow-sm"
-                      >
-                        {draftLoading ? "Generating..." : "Create Ledger Draft Entry →"}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* Danger Zone */}
               <div className="pt-6 border-t border-slate-200">
@@ -891,8 +904,8 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                     <div>
                       <p className="text-sm font-bold text-slate-900">Delete this proof</p>
                       <p className="text-xs text-slate-500 mt-1">
-                        {proof.linked_entry_id 
-                          ? "You must unlink this proof before you can delete it." 
+                        {proof.linked_entry_id
+                          ? "You must unlink this proof before you can delete it."
                           : "Permanently remove this file and its data. This cannot be undone."}
                       </p>
                     </div>
