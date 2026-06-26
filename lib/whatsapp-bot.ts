@@ -97,7 +97,7 @@ export async function processWhatsAppMessage(
   const hasMedia = numMedia && numMedia !== "0" && mediaUrl0;
   
   if (hasMedia) {
-    if (session.current_state !== "IDLE") {
+    if (session && session.current_state !== "IDLE") {
       await sendWhatsAppMessage(fromNumber, "New image received. Discarding previous prompt...");
     }
     await processNewProofUpload(fromNumber, userId, mediaUrl0, mimeType, bodyText, admin, messageSid);
@@ -105,7 +105,7 @@ export async function processWhatsAppMessage(
   }
 
   // 5. Route based on state
-  const state = session.current_state;
+  const state = session?.current_state || "IDLE";
   const command = bodyText.trim().toLowerCase();
 
   if (state === "AWAITING_ACTION") {
