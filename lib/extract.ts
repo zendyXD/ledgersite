@@ -18,6 +18,9 @@ export async function extractFromImage(imageBase64: string, mimeType: string, co
   const prompt = `Extract bookkeeping details from the provided invoice/receipt image.
 Additional context from user: ${commentContext || "None"}
 
+IMPORTANT: You must extract details for ANY type of payment screenshot or receipt. 
+Tip for PhonePe: specifically look for 'Banking Name', 'Debited from', and 'Transfer Details' fields to identify the party.
+
 Return a JSON object with EXACTLY the following fields:
 - extracted_party (string or null): the person or business paid or received from.
 - extracted_amount (number or null): the total amount of the transaction.

@@ -161,7 +161,12 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
   }
 
   const arrayBuffer = await mediaResponse.arrayBuffer();
-  const base64Image = Buffer.from(arrayBuffer).toString("base64");
+  if (arrayBuffer.byteLength === 0) {
+    console.error("Downloaded image is 0 bytes!");
+    await sendWhatsAppMessage(fromNumber, "Failed to download your image properly. Please try again.");
+    return;
+  }
+  const base64Image = Buffer.from(new Uint8Array(arrayBuffer)).toString("base64");
   const safeName = `whatsapp-${Date.now()}.jpg`;
   const filePath = `uploads/${safeName}`;
 
@@ -192,6 +197,15 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
   } catch (err) {
     console.error("Extraction failed", err);
     await sendWhatsAppMessage(fromNumber, "Failed to extract fields, but image was saved.");
+    return;
+  }
+
+  if (finalParty === null && finalAmount === null && finalDate === null) {
+    await sendWhatsAppMessage(fromNumber, "Could not extract details from this image. Please try a clearer screenshot.");
+    await admin
+      .from("whatsapp_sessions")
+      .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null })
+      .eq("whatsapp_number", fromNumber);
     return;
   }
 
