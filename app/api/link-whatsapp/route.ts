@@ -16,22 +16,38 @@ export async function POST(request: Request) {
       return Response.json({ message: "WhatsApp number is required" }, { status: 400 });
     }
 
-    // Insert or update whatsapp_links
-    const { error: upsertError } = await supabase
+    // Check if user already has a linked number
+    const { data: existingLink, error: fetchError } = await supabase
       .from("whatsapp_links")
-      .upsert(
-        { 
-          user_id: user.id, 
-          whatsapp_number: whatsappNumber 
-        },
-        { 
-          onConflict: "user_id" 
-        }
-      );
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-    if (upsertError) {
-      console.error("whatsapp_links upsert error:", upsertError);
-      if (upsertError.code === '23505') { // Unique violation
+    if (fetchError) {
+      console.error("whatsapp_links fetch error:", fetchError);
+      return Response.json({ message: "Database lookup failed." }, { status: 500 });
+    }
+
+    let resultError;
+
+    if (existingLink) {
+      // Update existing record
+      const { error } = await supabase
+        .from("whatsapp_links")
+        .update({ whatsapp_number: whatsappNumber })
+        .eq("user_id", user.id);
+      resultError = error;
+    } else {
+      // Insert new record
+      const { error } = await supabase
+        .from("whatsapp_links")
+        .insert({ user_id: user.id, whatsapp_number: whatsappNumber });
+      resultError = error;
+    }
+
+    if (resultError) {
+      console.error("whatsapp_links save error:", resultError);
+      if (resultError.code === '23505') { // Unique violation
         return Response.json({ message: "This WhatsApp number is already linked to another account." }, { status: 400 });
       }
       return Response.json({ message: "Failed to link WhatsApp number." }, { status: 500 });
