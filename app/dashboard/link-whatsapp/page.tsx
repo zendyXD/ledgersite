@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 
-export default function LinkWhatsAppPage() {
+function LinkWhatsAppContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -142,5 +142,23 @@ export default function LinkWhatsAppPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LinkWhatsAppPage() {
+  return (
+    <Suspense fallback={
+      <main className="page-shell p-4 md:p-8">
+        <div className="mx-auto max-w-lg space-y-8">
+          <div className="app-card p-6">
+            <div className="skeleton h-8 w-48 mb-4" />
+            <div className="skeleton h-4 w-full mb-8" />
+            <div className="skeleton h-10 w-full" />
+          </div>
+        </div>
+      </main>
+    }>
+      <LinkWhatsAppContent />
+    </Suspense>
   );
 }
