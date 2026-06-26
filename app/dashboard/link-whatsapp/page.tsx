@@ -16,6 +16,8 @@ function LinkWhatsAppContent() {
   const [successMessage, setSuccessMessage] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
   const [userEmail, setUserEmail] = useState("");
+  // Track if we already attempted auto-link to avoid loops if re-rendered
+  const [autoLinked, setAutoLinked] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -23,7 +25,10 @@ function LinkWhatsAppContent() {
         const { data, error } = await supabase.auth.getUser();
 
         if (error || !data.user) {
-          router.push("/login");
+          // Pass the current query parameters to the login page so they aren't lost
+          const queryString = searchParams.toString();
+          const returnPath = `/dashboard/link-whatsapp${queryString ? `?${queryString}` : ""}`;
+          router.push(`/login?next=${encodeURIComponent(returnPath)}`);
           return;
         }
 
@@ -32,6 +37,14 @@ function LinkWhatsAppContent() {
         const numberFromQuery = searchParams.get("number");
         if (numberFromQuery) {
           setWhatsappNumber(numberFromQuery);
+          
+          // Auto-link if we haven't already
+          if (!autoLinked) {
+            setAutoLinked(true);
+            // We purposely don't await this so init() finishes and loading is set to false
+            // The form will show the submitting state correctly
+            performLink(numberFromQuery);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -41,10 +54,10 @@ function LinkWhatsAppContent() {
       }
     }
     init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, searchParams, supabase.auth]);
 
-  async function handleLink(e: React.FormEvent) {
-    e.preventDefault();
+  async function performLink(numToLink: string) {
     setSubmitting(true);
     setErrorMessage("");
     setSuccessMessage("");
@@ -53,7 +66,7 @@ function LinkWhatsAppContent() {
       const res = await fetch("/api/link-whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ whatsappNumber }),
+        body: JSON.stringify({ whatsappNumber: numToLink }),
       });
 
       if (!res.ok) {
@@ -70,6 +83,11 @@ function LinkWhatsAppContent() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleLink(e: React.FormEvent) {
+    e.preventDefault();
+    await performLink(whatsappNumber);
   }
 
   if (loading) {

@@ -37,12 +37,13 @@ export default function LoginPage() {
           password,
         });
 
-       if (error) {
-  setMessage(error.message);
-} else {
-  setMessage("Login successful.");
-  router.push("/uploads");
-}
+        if (error) {
+          setMessage(error.message);
+        } else {
+          setMessage("Login successful.");
+          const next = new URLSearchParams(window.location.search).get("next");
+          router.push(next || "/uploads");
+        }
       }
     } catch (err) {
       console.error(err);
