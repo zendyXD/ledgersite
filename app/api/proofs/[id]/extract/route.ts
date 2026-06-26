@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-// ─── OCR BOOKKEEPING EXTRACTION ENGINE ───────────
+// ─── GEMINI VISION EXTRACTION ENGINE ───────────
 export async function extractFromImage(imageBase64: string, mimeType: string, commentContext?: string | null): Promise<{
   extracted_party: string | null;
   extracted_amount: number | null;
@@ -12,157 +12,81 @@ export async function extractFromImage(imageBase64: string, mimeType: string, co
   guessed_type: "income" | "expense" | null;
   extraction_confidence: Record<string, string>;
 }> {
-  try {
-    const dataPrefix = `data:${mimeType};base64,`;
-    const base64ImageString = imageBase64.startsWith("data:") ? imageBase64 : dataPrefix + imageBase64;
-    
-    const formData = new FormData();
-    formData.append("base64Image", base64ImageString);
-    formData.append("language", "eng");
-    // Free key fallback, can be overridden in .env
-    formData.append("apikey", process.env.OCR_SPACE_API_KEY || "helloworld");
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not set in the environment variables.");
+  }
 
-    const response = await fetch("https://api.ocr.space/parse/image", {
-      method: "POST",
-      body: formData
-    });
+  // Ensure base64 string doesn't contain the data URL prefix
+  const base64Data = imageBase64.replace(/^data:.*?;base64,/, "");
 
-    const result = await response.json();
-    let extractedText = "";
+  const prompt = `Extract bookkeeping details from the provided invoice/receipt image.
+Additional context from user: ${commentContext || "None"}
 
-    if (result && !result.IsErroredOnProcessing && result.ParsedResults) {
-      extractedText = result.ParsedResults.map((r: any) => r.ParsedText).join("\n").trim();
-    } else {
-      console.warn("OCR.space warning/error:", result);
-      extractedText = `OCR Error: ${result?.ErrorMessage?.[0] || "Unknown error"}`;
-    }
+Return a JSON object with EXACTLY the following fields:
+- extracted_party (string or null): the person or business paid or received from.
+- extracted_amount (number or null): the total amount of the transaction.
+- extracted_date (string or null): the date of the transaction in YYYY-MM-DD format.
+- extracted_text (string or null): all relevant text found in the image.
+- guessed_category (string or null): a suggested category for this transaction (e.g., Food, Travel, Utilities, Software).
+- guessed_type ("income", "expense", or null): whether this represents an income or an expense.
+- extraction_confidence (object): key-value pairs of string to string indicating your confidence for each extracted field (e.g., "amount": "high").`;
 
-    let extractedParty: string | null = null;
-    let extractedAmount: number | null = null;
-    let extractedDate: string | null = null;
-
-    if (extractedText) {
-      // Pre-process common OCR mistakes (e.g. 'el,500' -> '1,500')
-      let correctedText = extractedText.replace(/\bel,/gi, '1,').replace(/\be1,/gi, '1,');
-
-      // 1. AMOUNT: Find the largest number that isn't a year
-      let maxAmount = 0;
-      const amountRegex = /(?:₹|Rs\.?|INR)?\s*(\d{1,3}(?:,\d{2,3})*(?:\.\d{1,2})?)/gi;
-      let match;
-      while ((match = amountRegex.exec(correctedText)) !== null) {
-        const numStr = match[1].replace(/,/g, '');
-        const num = parseFloat(numStr);
-        if (num > maxAmount && num !== 2024 && num !== 2025 && num !== 2026) {
-          maxAmount = num;
-        }
-      }
-      if (maxAmount > 0) extractedAmount = maxAmount;
-
-      // 2. DATE: Parse DD MMM YYYY safely avoiding timezone shifts
-      const dateMatch = extractedText.match(/(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(\d{2,4})/i) ||
-                        extractedText.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-      if (dateMatch) {
-        let year = parseInt(dateMatch[3], 10);
-        if (year < 100) year += 2000;
-        let monthStr = "";
-        let dayStr = dateMatch[1].padStart(2, '0');
-        if (dateMatch[2].match(/[a-z]/i)) {
-          const months = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
-          const mIdx = months.indexOf(dateMatch[2].toLowerCase().substring(0,3));
-          monthStr = String(mIdx + 1).padStart(2, '0');
-        } else {
-          monthStr = dateMatch[2].padStart(2, '0');
-        }
-        extractedDate = `${year}-${monthStr}-${dayStr}`; // Format exactly as YYYY-MM-DD
-      }
-
-      // 3. PARTY: Stronger rule-based extraction for UPI formats
-      const lines = correctedText.split('\n').map(l => l.trim()).filter(l => l);
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        
-        // Handle "Paid to: NAME" on same line
-        const sameLineMatch = line.match(/^(?:Paid to|Sent to|To|Paying)\s*[:-]?\s*(.+)$/i);
-        if (sameLineMatch && sameLineMatch[1].trim() && !sameLineMatch[1].match(/^(G Pay|PhonePe|Paytm|UPI|Bank)$/i)) {
-          let partyLine = sameLineMatch[1].replace(/(?:₹|Rs\.?|INR|e[l1]|\$)\s*[\d,]+(?:\.\d{1,2})?/gi, '').trim();
-          partyLine = partyLine.replace(/[\d,]+(?:\.\d{1,2})?$/, '').trim();
-          if (partyLine.length > 2) {
-             extractedParty = partyLine;
-             break;
-          }
-        }
-
-        // Handle "Paid to \n NAME"
-        if (line.match(/^Paid to$/i) || line.match(/^Sent to$/i) || line.match(/^To$/i) || line.match(/^Paying$/i)) {
-          for (let j = i + 1; j < lines.length; j++) {
-            const nextLine = lines[j];
-            if (nextLine.match(/Paid to|Sent to|To|Paying/i)) continue; // skip nested headers
-            if (nextLine.match(/Transaction Successful|Processing|Pending/i)) continue;
-            if (nextLine.match(/^(G Pay|PhonePe|Paytm|UPI|Bank)$/i)) continue;
-            
-            // Clean up the target line
-            let partyLine = nextLine.replace(/(?:₹|Rs\.?|INR|e[l1]|\$)\s*[\d,]+(?:\.\d{1,2})?/gi, '').trim();
-            partyLine = partyLine.replace(/[\d,]+(?:\.\d{1,2})?$/, '').trim(); 
-            
-            if (partyLine && partyLine.length > 2) {
-              extractedParty = partyLine;
-              break;
+  const requestBody = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType: mimeType || "image/jpeg",
+              data: base64Data
             }
           }
-          if (extractedParty) break;
-        }
+        ]
       }
-
-      // 4. TRANSACTION ID: Find T+digits or next line after header
-      let txnId = null;
-      const txnMatch = extractedText.match(/T\d{15,}/i);
-      if (txnMatch) {
-        txnId = txnMatch[0];
-      } else {
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].match(/Transaction ID/i) && i + 1 < lines.length) {
-            txnId = lines[i+1].trim();
-            break;
-          }
-        }
-      }
-
-      // 5. UTR: Find UTR / Ref digits
-      let utr = null;
-      const utrMatch = extractedText.match(/(?:UTR|Ref No|UPI Ref|UPI Transaction ID|Ref\. No\.)[\s:]*(\d{10,})/i);
-      if (utrMatch) {
-        utr = utrMatch[1];
-      }
-
-      // 6. INJECT TXN/UTR INTO RAW TEXT FOR UI VISIBILITY
-      if (txnId || utr) {
-        extractedText = `--- UPI DETAILS ---\n` +
-                        (txnId ? `Transaction ID: ${txnId}\n` : '') +
-                        (utr ? `UTR: ${utr}\n` : '') +
-                        `-------------------\n\n` + extractedText;
-      }
+    ],
+    generationConfig: {
+      responseMimeType: "application/json"
     }
+  };
 
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+  }
+
+  const result = await response.json();
+  let textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!textResponse) {
+    console.error("Gemini Response Error:", JSON.stringify(result, null, 2));
+    throw new Error("Gemini returned an empty or invalid response.");
+  }
+
+  // Gemini sometimes wraps JSON in markdown blocks even with responseMimeType
+  textResponse = textResponse.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+
+  try {
+    const parsed = JSON.parse(textResponse);
     return {
-      extracted_party: extractedParty,
-      extracted_amount: extractedAmount,
-      extracted_date: extractedDate,
-      extracted_text: extractedText || null,
-      guessed_category: null,
-      guessed_type: null,
-      extraction_confidence: {}
+      extracted_party: parsed.extracted_party ?? null,
+      extracted_amount: parsed.extracted_amount ?? null,
+      extracted_date: parsed.extracted_date ?? null,
+      extracted_text: parsed.extracted_text ?? null,
+      guessed_category: parsed.guessed_category ?? null,
+      guessed_type: (parsed.guessed_type === "income" || parsed.guessed_type === "expense") ? parsed.guessed_type : "expense",
+      extraction_confidence: parsed.extraction_confidence ?? {}
     };
   } catch (err) {
-    console.error("OCR.space API Error:", err);
-    return {
-      extracted_party: null,
-      extracted_amount: null,
-      extracted_date: null,
-      extracted_text: `Extraction failure: ${err instanceof Error ? err.message : String(err)}`,
-      guessed_category: null,
-      guessed_type: null,
-      extraction_confidence: {}
-    };
+    console.error("Failed to parse Gemini JSON output. Raw text:", textResponse);
+    throw new Error("Failed to parse Gemini JSON output: " + (err instanceof Error ? err.message : String(err)));
   }
 }
 // ─── ROUTE ────────────────────────────────────────────────────────────────────
@@ -213,13 +137,14 @@ export async function POST(
     const base64 = Buffer.from(arrayBuffer).toString("base64");
     const mimeType = fileData.type || "image/jpeg";
 
-    // Run extraction (mock for now, real Claude call later)
+    // Run extraction
     let extractionResult;
     try {
       extractionResult = await extractFromImage(base64, mimeType, proof.comment);
-    } catch {
+    } catch (error) {
+      console.error("Extraction process failed:", error);
       await supabase.from("proofs").update({ extraction_status: "failed" }).eq("id", id);
-      return NextResponse.json({ message: "Extraction failed" }, { status: 500 });
+      return NextResponse.json({ message: "Extraction failed", error: String(error) }, { status: 500 });
     }
 
     // Save results back to proof row without hitting the non-existent extraction_status column
