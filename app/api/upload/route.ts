@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { extractFromImage } from "../proofs/[id]/extract/route";
+import { extractFromImage } from "@/lib/extract";
 
 export async function POST(request: Request) {
   try {
