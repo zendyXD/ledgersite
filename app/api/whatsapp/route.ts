@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractFromImage } from "@/lib/extract";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { waitUntil } from "@vercel/functions";
 
 const emptyTwiML = `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`;
 
@@ -72,24 +71,24 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = getBaseUrl(request);
 
-    // Run the bot processing in the background so Twilio doesn't time out
-    const backgroundTask = import("@/lib/whatsapp-bot").then(({ processWhatsAppMessage }) => {
-      return processWhatsAppMessage(
-        fromNumber,
-        messageSid,
-        bodyText,
-        numMedia,
-        mediaUrl0,
-        mimeType,
-        baseUrl
-      );
-    }).catch((error) => {
-      console.error("Background WhatsApp process failed:", error);
-    });
+    // Run the bot processing in the background using waitUntil so Twilio doesn't time out
+    // and Vercel knows to keep the function alive until the promise resolves.
+    waitUntil(
+      import("@/lib/whatsapp-bot").then(({ processWhatsAppMessage }) => {
+        return processWhatsAppMessage(
+          fromNumber,
+          messageSid,
+          bodyText,
+          numMedia,
+          mediaUrl0,
+          mimeType,
+          baseUrl
+        );
+      }).catch((error) => {
+        console.error("Background WhatsApp process failed:", error);
+      })
+    );
 
-    // In Next 15, we can use `after()` but standard floating promises work safely in Vercel if properly caught
-    // For maximum compatibility we rely on floating promises, which run as long as Vercel allows (or use experimental.after if configured)
-    
     // Immediately return 200 OK so Twilio doesn't retry
     return new NextResponse(emptyTwiML, { status: 200, headers: { "Content-Type": "text/xml" } });
   } catch (error) {
