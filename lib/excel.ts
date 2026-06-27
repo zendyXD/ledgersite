@@ -50,3 +50,68 @@ export async function generateProofExcelBuffer(proof: any, ledgerEntry?: any): P
   const buffer = await workbook.xlsx.writeBuffer();
   return buffer as unknown as Buffer;
 }
+
+export async function generateLedgerExcelBuffer(entries: any[]): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "LedgerSite";
+  workbook.created = new Date();
+
+  const worksheet = workbook.addWorksheet("Monthly Ledger");
+
+  worksheet.columns = [
+    { header: "Date", key: "date", width: 15 },
+    { header: "Party Name", key: "party", width: 25 },
+    { header: "Amount", key: "amount", width: 15 },
+    { header: "Category", key: "category", width: 20 },
+    { header: "Type", key: "type", width: 15 },
+    { header: "Note", key: "note", width: 35 },
+  ];
+
+  worksheet.getRow(1).font = { bold: true };
+
+  let totalExpense = 0;
+  let totalIncome = 0;
+
+  for (const entry of entries) {
+    if (entry.is_split && entry.split_allocations) {
+      entry.split_allocations.forEach((split: any) => {
+        worksheet.addRow({
+          date: entry.entry_date || "",
+          party: split.party_name || entry.party_name || "",
+          amount: split.amount || 0,
+          category: split.category || entry.category || "",
+          type: entry.entry_type || "",
+          note: split.note || entry.note || ""
+        });
+        if (entry.entry_type === "expense") totalExpense += parseFloat(split.amount || 0);
+        else totalIncome += parseFloat(split.amount || 0);
+      });
+    } else {
+      worksheet.addRow({
+        date: entry.entry_date || "",
+        party: entry.party_name || "",
+        amount: entry.amount || 0,
+        category: entry.category || "",
+        type: entry.entry_type || "",
+        note: entry.note || ""
+      });
+      if (entry.entry_type === "expense") totalExpense += parseFloat(entry.amount || 0);
+      else totalIncome += parseFloat(entry.amount || 0);
+    }
+  }
+
+  // Add empty row then totals
+  worksheet.addRow({});
+  const totalsRow = worksheet.addRow({
+    date: "TOTALS",
+    party: `Income: ₹${totalIncome.toFixed(2)}`,
+    amount: `Expense: ₹${totalExpense.toFixed(2)}`,
+    category: `Net: ₹${(totalIncome - totalExpense).toFixed(2)}`
+  });
+  totalsRow.font = { bold: true };
+
+  worksheet.getColumn("amount").numFmt = "₹#,##0.00";
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return buffer as unknown as Buffer;
+}

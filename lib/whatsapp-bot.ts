@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractFromImage, reviseExtractedDetails, splitExtractedDetails } from "@/lib/extract";
+import { generateLedgerExcelBuffer } from "@/lib/excel";
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -322,14 +323,90 @@ export async function processWhatsAppMessage(
       await admin.from("whatsapp_sessions").update({ current_state: "AWAITING_MONTHLY_MONTH" }).eq("whatsapp_number", fromNumber);
       await sendWhatsAppMessage(fromNumber, "Please reply with the month and year (e.g., 'June 2026'). 📅");
     } else if (command === "3") {
-      await admin.from("whatsapp_sessions").update({ current_state: "AWAITING_PARTY_NAME" }).eq("whatsapp_number", fromNumber);
-      await sendWhatsAppMessage(fromNumber, "Please reply with the name of the worker, vendor, or customer. 👤");
+      await sendWhatsAppMessage(fromNumber, "Coming next, please use Upload for now.");
     } else if (command === "4" || command === "cancel" || command === "done") {
       await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
       await sendWhatsAppMessage(fromNumber, "Done! Feel free to say 'hi' whenever you need the menu again. 👋");
     } else {
       await sendWhatsAppMessage(fromNumber, "Please reply with 1, 2, 3, or 4.");
     }
+  } else if (state === "AWAITING_MONTHLY_MONTH") {
+    if (command === "cancel") {
+      await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "Cancelled. Say 'hi' to see the menu again.");
+      return;
+    }
+
+    const t = bodyText.trim().toLowerCase();
+    const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    let m = null;
+    let y = null;
+
+    const mmMatch = t.match(/^(0?[1-9]|1[0-2])[\/\- ](\d{4})$/);
+    if (mmMatch) {
+      m = parseInt(mmMatch[1]);
+      y = parseInt(mmMatch[2]);
+    } else {
+      for (let i = 0; i < months.length; i++) {
+        if (t.startsWith(months[i])) {
+          const yearMatch = t.match(/\d{4}$/);
+          if (yearMatch) {
+            m = i + 1;
+            y = parseInt(yearMatch[0]);
+            break;
+          }
+        }
+      }
+    }
+
+    if (!m || !y) {
+      await sendWhatsAppMessage(fromNumber, "I didn't understand that format. Please try again (e.g., 'June 2026' or '06/2026') or type 'cancel'.");
+      return;
+    }
+
+    await sendTypingIndicator(fromNumber);
+    await sendWhatsAppMessage(fromNumber, "Fetching your ledger... ⏳");
+
+    const startStr = `${y}-${m.toString().padStart(2, '0')}-01`;
+    let nextM = m + 1;
+    let nextY = y;
+    if (nextM > 12) {
+      nextM = 1;
+      nextY++;
+    }
+    const endStr = `${nextY}-${nextM.toString().padStart(2, '0')}-01`;
+
+    const { data: entries, error } = await admin
+      .from("ledger_entries")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("entry_date", startStr)
+      .lt("entry_date", endStr)
+      .order("entry_date", { ascending: true });
+
+    if (error || !entries || entries.length === 0) {
+      await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "No entries found for that month. 📉");
+      return;
+    }
+
+    try {
+      const excelBuffer = await generateLedgerExcelBuffer(entries);
+      const fileName = `exports/monthly_${y}_${m}_${Date.now()}.xlsx`;
+      await admin.storage.from("proofs").upload(fileName, excelBuffer, { contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", upsert: true });
+      const { data: signedData } = await admin.storage.from("proofs").createSignedUrl(fileName, 3600);
+      
+      if (signedData?.signedUrl) {
+        await sendWhatsAppMessage(fromNumber, `Found ${entries.length} entries. Here is your Excel export! 📊`, signedData.signedUrl);
+      } else {
+        await sendWhatsAppMessage(fromNumber, "Failed to sign URL for export.");
+      }
+    } catch (err) {
+      console.error("Export failed", err);
+      await sendWhatsAppMessage(fromNumber, "Failed to generate the export.");
+    }
+
+    await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
   } else {
     // IDLE but received text
     await admin.from("whatsapp_sessions").update({ current_state: "AWAITING_MENU_CHOICE" }).eq("whatsapp_number", fromNumber);
