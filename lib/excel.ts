@@ -48,5 +48,5 @@ export async function generateProofExcelBuffer(proof: any, ledgerEntry?: any): P
   worksheet.getColumn("amount").numFmt = "₹#,##0.00";
 
   const buffer = await workbook.xlsx.writeBuffer();
-  return buffer as Buffer;
+  return buffer as unknown as Buffer;
 }
