@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { extractFromImage } from "@/lib/extract";
+import { extractFromImage, reviseExtractedDetails } from "@/lib/extract";
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -125,7 +125,14 @@ export async function processWhatsAppMessage(
         .eq("whatsapp_number", fromNumber);
         
       await sendWhatsAppMessage(fromNumber, "✅ Proof saved successfully to your LedgerSite inbox!");
-    } else if (command === "2" || command === "cancel") {
+    } else if (command === "2" || command === "edit") {
+      await admin
+        .from("whatsapp_sessions")
+        .update({ current_state: "AWAITING_EDIT" })
+        .eq("whatsapp_number", fromNumber);
+        
+      await sendWhatsAppMessage(fromNumber, "Please send your correction (e.g., 'Amount is 500' or 'Party is Uber').");
+    } else if (command === "3" || command === "cancel") {
       // Cancel proof
       if (session.active_proof_id) {
         await admin.from("proofs").delete().eq("id", session.active_proof_id);
@@ -138,7 +145,66 @@ export async function processWhatsAppMessage(
         
       await sendWhatsAppMessage(fromNumber, "❌ Proof cancelled and discarded.");
     } else {
-      await sendWhatsAppMessage(fromNumber, "Please reply with *1* to Save or *2* to Cancel.");
+      await sendWhatsAppMessage(fromNumber, "Please reply with *1* to Save, *2* to Edit, or *3* to Cancel.");
+    }
+  } else if (state === "AWAITING_EDIT") {
+    if (command === "cancel") {
+      if (session.active_proof_id) {
+        await admin.from("proofs").delete().eq("id", session.active_proof_id);
+      }
+      await admin
+        .from("whatsapp_sessions")
+        .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null })
+        .eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "❌ Edit cancelled. Proof discarded.");
+      return;
+    }
+
+    if (!session.active_proof_id) {
+      await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "Session expired or proof not found. Please send a new image.");
+      return;
+    }
+
+    await sendTypingIndicator(fromNumber);
+    await sendWhatsAppMessage(fromNumber, "Applying corrections... ⏳");
+
+    // Fetch existing proof
+    const { data: proof } = await admin.from("proofs").select("*").eq("id", session.active_proof_id).single();
+    if (!proof) {
+      await admin.from("whatsapp_sessions").update({ current_state: "IDLE", active_proof_id: null }).eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "Proof not found. Please send a new image.");
+      return;
+    }
+
+    const currentFields = {
+      extracted_party: proof.extracted_party,
+      extracted_amount: proof.extracted_amount,
+      extracted_date: proof.extracted_date,
+      guessed_category: proof.extracted_category,
+      guessed_type: proof.extracted_entry_type
+    };
+
+    try {
+      const revised = await reviseExtractedDetails(currentFields, bodyText);
+      
+      // Update proof
+      await admin.from("proofs").update({
+        extracted_party: revised.extracted_party,
+        extracted_amount: revised.extracted_amount,
+        extracted_date: revised.extracted_date,
+        extracted_category: revised.guessed_category || proof.extracted_category,
+        extracted_entry_type: revised.guessed_type || proof.extracted_entry_type
+      }).eq("id", proof.id);
+
+      // Return to AWAITING_ACTION
+      await admin.from("whatsapp_sessions").update({ current_state: "AWAITING_ACTION" }).eq("whatsapp_number", fromNumber);
+
+      const summary = `🧾 *Revised Details*\nParty: ${revised.extracted_party || "Unknown"}\nAmount: ₹${revised.extracted_amount || "0.00"}\nDate: ${revised.extracted_date || "Unknown"}\n\nWhat would you like to do?\n1️⃣ Save\n2️⃣ Edit\n3️⃣ Cancel`;
+      await sendWhatsAppMessage(fromNumber, summary);
+    } catch (err) {
+      console.error("Revision failed", err);
+      await sendWhatsAppMessage(fromNumber, "Failed to apply corrections. Please try again or type 'cancel' to abort.");
     }
   } else {
     // IDLE but received text
@@ -245,6 +311,6 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     .eq("whatsapp_number", fromNumber);
 
   // Send summary
-  const summary = `🧾 *Extracted Details*\nParty: ${finalParty || "Unknown"}\nAmount: ₹${finalAmount || "0.00"}\nDate: ${finalDate || "Unknown"}\n\nWhat would you like to do?\n1️⃣ Save\n2️⃣ Cancel`;
+  const summary = `🧾 *Extracted Details*\nParty: ${finalParty || "Unknown"}\nAmount: ₹${finalAmount || "0.00"}\nDate: ${finalDate || "Unknown"}\n\nWhat would you like to do?\n1️⃣ Save\n2️⃣ Edit\n3️⃣ Cancel`;
   await sendWhatsAppMessage(fromNumber, summary);
 }
