@@ -1,14 +1,18 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractFromImage, reviseExtractedDetails, splitExtractedDetails } from "@/lib/extract";
+import { generateProofExcelBuffer } from "@/lib/excel";
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioFrom = process.env.TWILIO_WHATSAPP_FROM || "whatsapp:+14155238886";
 
-async function sendWhatsAppMessage(to: string, body: string) {
+async function sendWhatsAppMessage(to: string, body: string, mediaUrl?: string) {
   if (!accountSid || !authToken) return;
   const authHeader = "Basic " + Buffer.from(`${accountSid}:${authToken}`).toString("base64");
   const params = new URLSearchParams({ To: to, From: twilioFrom, Body: body });
+  if (mediaUrl) {
+    params.append("MediaUrl", mediaUrl);
+  }
 
   await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
     method: "POST",
@@ -140,9 +144,9 @@ export async function processWhatsAppMessage(
         }
         await admin
           .from("whatsapp_sessions")
-          .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
+          .update({ current_state: "AWAITING_EXPORT", context_data: {} })
           .eq("whatsapp_number", fromNumber);
-        await sendWhatsAppMessage(fromNumber, "✅ Split Ledger draft created successfully!");
+        await sendWhatsAppMessage(fromNumber, "✅ Split Ledger draft created successfully!\n\nWould you like to export it?\n1️⃣ Excel\n2️⃣ Done");
       } else {
         // Normal save
         if (session.active_proof_id) {
@@ -153,9 +157,9 @@ export async function processWhatsAppMessage(
         }
         await admin
           .from("whatsapp_sessions")
-          .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
+          .update({ current_state: "AWAITING_EXPORT", context_data: {} })
           .eq("whatsapp_number", fromNumber);
-        await sendWhatsAppMessage(fromNumber, "✅ Proof saved successfully to your LedgerSite inbox!");
+        await sendWhatsAppMessage(fromNumber, "✅ Proof saved successfully to your LedgerSite inbox!\n\nWould you like to export it?\n1️⃣ Excel\n2️⃣ Done");
       }
     } else if (command === "2" || command === "edit") {
       await admin
@@ -310,6 +314,64 @@ export async function processWhatsAppMessage(
     } catch (err) {
       console.error("Split failed", err);
       await sendWhatsAppMessage(fromNumber, "Failed to split amounts. Please try again or type 'cancel' to abort.");
+    }
+  } else if (state === "AWAITING_EXPORT") {
+    if (command === "1" || command === "excel") {
+      if (!session.active_proof_id) {
+        await admin.from("whatsapp_sessions").update({ current_state: "IDLE", context_data: {} }).eq("whatsapp_number", fromNumber);
+        await sendWhatsAppMessage(fromNumber, "Session expired. No active proof found.");
+        return;
+      }
+
+      await sendTypingIndicator(fromNumber);
+      await sendWhatsAppMessage(fromNumber, "Generating your Excel export... ⏳");
+
+      try {
+        const { data: proof } = await admin.from("proofs").select("*").eq("id", session.active_proof_id).single();
+        if (!proof) throw new Error("Proof not found");
+
+        let ledgerEntry = null;
+        if (proof.linked_entry_id) {
+          const { data: entry } = await admin.from("ledger_entries").select("*").eq("id", proof.linked_entry_id).single();
+          ledgerEntry = entry;
+        }
+
+        const excelBuffer = await generateProofExcelBuffer(proof, ledgerEntry);
+        
+        // Upload to Supabase
+        const fileName = `exports/${proof.id}_${Date.now()}.xlsx`;
+        const { error: uploadError } = await admin.storage
+          .from("proofs")
+          .upload(fileName, excelBuffer, { contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        // Generate signed URL (valid for 1 hour)
+        const { data: signedData, error: signError } = await admin.storage
+          .from("proofs")
+          .createSignedUrl(fileName, 3600);
+
+        if (signError || !signedData?.signedUrl) throw new Error("Failed to sign URL");
+
+        await sendWhatsAppMessage(fromNumber, "Here is your Excel export! 📊", signedData.signedUrl);
+
+      } catch (err) {
+        console.error("Export failed", err);
+        await sendWhatsAppMessage(fromNumber, "Failed to generate the export. Please try again later.");
+      }
+
+      // Clear session after export
+      await admin
+        .from("whatsapp_sessions")
+        .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
+        .eq("whatsapp_number", fromNumber);
+    } else {
+      // Done or any other input
+      await admin
+        .from("whatsapp_sessions")
+        .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
+        .eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "Done! You can send another receipt anytime.");
     }
   } else {
     // IDLE but received text
