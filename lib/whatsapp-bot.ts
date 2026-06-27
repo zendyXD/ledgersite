@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { extractFromImage, reviseExtractedDetails } from "@/lib/extract";
+import { extractFromImage, reviseExtractedDetails, splitExtractedDetails } from "@/lib/extract";
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -110,21 +110,53 @@ export async function processWhatsAppMessage(
 
   if (state === "AWAITING_ACTION") {
     if (command === "1" || command === "save") {
-      // Mark as reviewed
-      if (session.active_proof_id) {
+      // Check for split allocations
+      const contextData = session.context_data || {};
+      const splitAllocations = contextData.split_allocations;
+
+      if (splitAllocations && splitAllocations.length > 0 && session.active_proof_id) {
+        // Fetch the proof to link it
+        const { data: proof } = await admin.from("proofs").select("*").eq("id", session.active_proof_id).single();
+        if (proof) {
+          const entryDate = proof.extracted_date || new Date().toISOString().slice(0, 10);
+          
+          // Create ledger entry
+          const { data: insertedEntry } = await admin.from("ledger_entries").insert({
+            user_id: session.user_id,
+            proof_id: proof.id,
+            entry_date: entryDate,
+            amount: proof.extracted_amount,
+            entry_type: proof.extracted_entry_type || "expense",
+            party_name: proof.extracted_party,
+            category: proof.extracted_category || "misc",
+            note: proof.comment || "",
+            is_split: true,
+            split_allocations: splitAllocations
+          }).select().single();
+
+          if (insertedEntry) {
+            await admin.from("proofs").update({ processing_status: "linked", linked_entry_id: insertedEntry.id }).eq("id", proof.id);
+          }
+        }
         await admin
-          .from("proofs")
-          .update({ processing_status: "reviewed" })
-          .eq("id", session.active_proof_id);
+          .from("whatsapp_sessions")
+          .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
+          .eq("whatsapp_number", fromNumber);
+        await sendWhatsAppMessage(fromNumber, "✅ Split Ledger draft created successfully!");
+      } else {
+        // Normal save
+        if (session.active_proof_id) {
+          await admin
+            .from("proofs")
+            .update({ processing_status: "reviewed" })
+            .eq("id", session.active_proof_id);
+        }
+        await admin
+          .from("whatsapp_sessions")
+          .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
+          .eq("whatsapp_number", fromNumber);
+        await sendWhatsAppMessage(fromNumber, "✅ Proof saved successfully to your LedgerSite inbox!");
       }
-      
-      // Reset state
-      await admin
-        .from("whatsapp_sessions")
-        .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null })
-        .eq("whatsapp_number", fromNumber);
-        
-      await sendWhatsAppMessage(fromNumber, "✅ Proof saved successfully to your LedgerSite inbox!");
     } else if (command === "2" || command === "edit") {
       await admin
         .from("whatsapp_sessions")
@@ -132,7 +164,14 @@ export async function processWhatsAppMessage(
         .eq("whatsapp_number", fromNumber);
         
       await sendWhatsAppMessage(fromNumber, "Please send your correction (e.g., 'Amount is 500' or 'Party is Uber').");
-    } else if (command === "3" || command === "cancel") {
+    } else if (command === "3" || command === "split") {
+      await admin
+        .from("whatsapp_sessions")
+        .update({ current_state: "AWAITING_SPLIT" })
+        .eq("whatsapp_number", fromNumber);
+        
+      await sendWhatsAppMessage(fromNumber, "Please send your split instructions (e.g., '200 for food, 300 for travel').");
+    } else if (command === "4" || command === "cancel") {
       // Cancel proof
       if (session.active_proof_id) {
         await admin.from("proofs").delete().eq("id", session.active_proof_id);
@@ -140,12 +179,12 @@ export async function processWhatsAppMessage(
       
       await admin
         .from("whatsapp_sessions")
-        .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null })
+        .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
         .eq("whatsapp_number", fromNumber);
         
       await sendWhatsAppMessage(fromNumber, "❌ Proof cancelled and discarded.");
     } else {
-      await sendWhatsAppMessage(fromNumber, "Please reply with *1* to Save, *2* to Edit, or *3* to Cancel.");
+      await sendWhatsAppMessage(fromNumber, "Please reply with *1* to Save, *2* to Edit, *3* to Split, or *4* to Cancel.");
     }
   } else if (state === "AWAITING_EDIT") {
     if (command === "cancel") {
@@ -200,11 +239,77 @@ export async function processWhatsAppMessage(
       // Return to AWAITING_ACTION
       await admin.from("whatsapp_sessions").update({ current_state: "AWAITING_ACTION" }).eq("whatsapp_number", fromNumber);
 
-      const summary = `🧾 *Revised Details*\nParty: ${revised.extracted_party || "Unknown"}\nAmount: ₹${revised.extracted_amount || "0.00"}\nDate: ${revised.extracted_date || "Unknown"}\n\nWhat would you like to do?\n1️⃣ Save\n2️⃣ Edit\n3️⃣ Cancel`;
+      const summary = `🧾 *Revised Details*\nParty: ${revised.extracted_party || "Unknown"}\nAmount: ₹${revised.extracted_amount || "0.00"}\nDate: ${revised.extracted_date || "Unknown"}\n\nWhat would you like to do?\n1️⃣ Save\n2️⃣ Edit\n3️⃣ Split\n4️⃣ Cancel`;
       await sendWhatsAppMessage(fromNumber, summary);
     } catch (err) {
       console.error("Revision failed", err);
       await sendWhatsAppMessage(fromNumber, "Failed to apply corrections. Please try again or type 'cancel' to abort.");
+    }
+  } else if (state === "AWAITING_SPLIT") {
+    if (command === "cancel") {
+      if (session.active_proof_id) {
+        await admin.from("proofs").delete().eq("id", session.active_proof_id);
+      }
+      await admin
+        .from("whatsapp_sessions")
+        .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
+        .eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "❌ Split cancelled. Proof discarded.");
+      return;
+    }
+
+    if (!session.active_proof_id) {
+      await admin.from("whatsapp_sessions").update({ current_state: "IDLE", context_data: {} }).eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "Session expired or proof not found. Please send a new image.");
+      return;
+    }
+
+    await sendTypingIndicator(fromNumber);
+    await sendWhatsAppMessage(fromNumber, "Splitting amounts... ⏳");
+
+    const { data: proof } = await admin.from("proofs").select("*").eq("id", session.active_proof_id).single();
+    if (!proof) {
+      await admin.from("whatsapp_sessions").update({ current_state: "IDLE", active_proof_id: null, context_data: {} }).eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "Proof not found. Please send a new image.");
+      return;
+    }
+
+    const currentFields = {
+      extracted_party: proof.extracted_party,
+      extracted_amount: proof.extracted_amount,
+      extracted_date: proof.extracted_date,
+      guessed_category: proof.extracted_category,
+      guessed_type: proof.extracted_entry_type
+    };
+
+    try {
+      const splitResult = await splitExtractedDetails(currentFields, bodyText);
+      const splits = splitResult.splits || [];
+      
+      const totalSplitAmount = splits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+      const originalAmount = Number(proof.extracted_amount) || 0;
+
+      // Allow a tiny tolerance for floating point math
+      if (Math.abs(totalSplitAmount - originalAmount) > 1.0) {
+        await sendWhatsAppMessage(fromNumber, `⚠️ The total of your splits (₹${totalSplitAmount}) does not match the proof amount (₹${originalAmount}). Please send a new split instruction or type 'cancel'.`);
+        return;
+      }
+
+      await admin.from("whatsapp_sessions").update({ 
+        current_state: "AWAITING_ACTION",
+        context_data: { ...session.context_data, split_allocations: splits }
+      }).eq("whatsapp_number", fromNumber);
+
+      let splitText = `🧾 *Split Preview*\n`;
+      splits.forEach((s, i) => {
+        splitText += `${i + 1}. ₹${s.amount || 0} - ${s.category || "Misc"} (${s.party_name || proof.extracted_party || "Unknown"})\n`;
+      });
+      splitText += `\nWhat would you like to do?\n1️⃣ Save\n2️⃣ Edit\n3️⃣ Split\n4️⃣ Cancel`;
+
+      await sendWhatsAppMessage(fromNumber, splitText);
+    } catch (err) {
+      console.error("Split failed", err);
+      await sendWhatsAppMessage(fromNumber, "Failed to split amounts. Please try again or type 'cancel' to abort.");
     }
   } else {
     // IDLE but received text
@@ -270,7 +375,7 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     await sendWhatsAppMessage(fromNumber, "Could not extract details from this image. Please try a clearer screenshot.");
     await admin
       .from("whatsapp_sessions")
-      .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null })
+      .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
       .eq("whatsapp_number", fromNumber);
     return;
   }
@@ -311,6 +416,6 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     .eq("whatsapp_number", fromNumber);
 
   // Send summary
-  const summary = `🧾 *Extracted Details*\nParty: ${finalParty || "Unknown"}\nAmount: ₹${finalAmount || "0.00"}\nDate: ${finalDate || "Unknown"}\n\nWhat would you like to do?\n1️⃣ Save\n2️⃣ Edit\n3️⃣ Cancel`;
+  const summary = `🧾 *Extracted Details*\nParty: ${finalParty || "Unknown"}\nAmount: ₹${finalAmount || "0.00"}\nDate: ${finalDate || "Unknown"}\n\nWhat would you like to do?\n1️⃣ Save\n2️⃣ Edit\n3️⃣ Split\n4️⃣ Cancel`;
   await sendWhatsAppMessage(fromNumber, summary);
 }

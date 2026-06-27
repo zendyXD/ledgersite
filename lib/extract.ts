@@ -168,3 +168,79 @@ Return a JSON object with EXACTLY the following fields:
     throw new Error("Failed to parse Gemini JSON output during edit: " + (err instanceof Error ? err.message : String(err)));
   }
 }
+
+export async function splitExtractedDetails(
+  currentFields: any,
+  splitInstruction: string
+): Promise<{
+  splits: Array<{
+    amount: number | null;
+    party_name: string | null;
+    category: string | null;
+    note: string | null;
+  }>
+}> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not set in the environment variables.");
+  }
+
+  const prompt = `You are an AI assisting in splitting a bookkeeping transaction into multiple sub-transactions (splits) based on user instructions.
+
+Original Extracted Transaction:
+${JSON.stringify(currentFields, null, 2)}
+
+User's Split Instruction:
+"${splitInstruction}"
+
+Create an array of split allocations.
+IMPORTANT: The sum of the amounts in your splits MUST match the user's instructions.
+
+Return a JSON object with EXACTLY the following format:
+{
+  "splits": [
+    {
+      "amount": number (the allocated amount),
+      "party_name": string or null (the party for this specific split, or use the original party if unspecified),
+      "category": string or null (the category for this specific split),
+      "note": string or null (a short description or note for this split)
+    }
+  ]
+}`;
+
+  const requestBody = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseMimeType: "application/json"
+    }
+  };
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error during split: ${response.status} ${errorText}`);
+  }
+
+  const result = await response.json();
+  let textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!textResponse) {
+    throw new Error("Gemini returned an empty or invalid response during split.");
+  }
+
+  textResponse = textResponse.replace(/^\s*```json\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+
+  try {
+    const parsed = JSON.parse(textResponse);
+    return {
+      splits: parsed.splits || []
+    };
+  } catch (err) {
+    throw new Error("Failed to parse Gemini JSON output during split: " + (err instanceof Error ? err.message : String(err)));
+  }
+}
