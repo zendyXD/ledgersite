@@ -479,29 +479,36 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
   }
 
   // Insert into proofs
+  const proofPayload = {
+    user_id: userId,
+    file_path: filePath,
+    original_name: "WhatsApp Upload",
+    comment: bodyText || "",
+    extracted_party: finalParty,
+    extracted_amount: finalAmount,
+    extracted_date: finalDate,
+    extracted_category: finalCategory,
+    extracted_entry_type: finalType,
+    processing_status: "unprocessed",
+    source: "whatsapp",
+    metadata: { whatsapp_sender: fromNumber }
+  };
+  
+  console.log(`[WhatsApp Bot] Attempting to insert proof for ${fromNumber}:`, JSON.stringify(proofPayload, null, 2));
+
   const { data: insertedProof, error: insertError } = await admin
     .from("proofs")
-    .insert({
-      user_id: userId,
-      file_path: filePath,
-      original_name: "WhatsApp Upload",
-      comment: bodyText || "",
-      extracted_party: finalParty,
-      extracted_amount: finalAmount,
-      extracted_date: finalDate,
-      extracted_category: finalCategory,
-      extracted_entry_type: finalType,
-      processing_status: "unprocessed",
-      source: "whatsapp",
-      metadata: { whatsapp_sender: fromNumber }
-    })
+    .insert(proofPayload)
     .select()
     .single();
 
   if (insertError) {
+    console.error(`[WhatsApp Bot] Error inserting proof for ${fromNumber}:`, insertError);
     await sendWhatsAppMessage(fromNumber, "Failed to create proof record in database.");
     return;
   }
+  
+  console.log(`[WhatsApp Bot] Successfully inserted proof with ID: ${insertedProof.id}`);
 
   // Update session to AWAITING_ACTION
   await admin
