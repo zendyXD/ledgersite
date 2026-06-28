@@ -112,7 +112,10 @@ export async function processWhatsAppMessage(
   const state = session?.current_state || "IDLE";
   const command = bodyText.trim().toLowerCase();
 
+  console.log(`[WhatsApp State Router] Sender: ${fromNumber} | State: '${state}' | Input: '${bodyText}' | Command: '${command}'`);
+
   if (state === "AWAITING_ACTION") {
+    console.log(`[WhatsApp Bot] Entered branch: AWAITING_ACTION for ${fromNumber}`);
     if (command === "1" || command === "save") {
       // Check for split allocations
       const contextData = session.context_data || {};
@@ -191,6 +194,7 @@ export async function processWhatsAppMessage(
       await sendWhatsAppMessage(fromNumber, "Please reply with *1* to Save, *2* to Edit, *3* to Split, or *4* to Cancel.");
     }
   } else if (state === "AWAITING_EDIT") {
+    console.log(`[WhatsApp Bot] Entered branch: AWAITING_EDIT for ${fromNumber}`);
     if (command === "cancel") {
       if (session.active_proof_id) {
         await admin.from("proofs").delete().eq("id", session.active_proof_id);
@@ -250,6 +254,7 @@ export async function processWhatsAppMessage(
       await sendWhatsAppMessage(fromNumber, "Failed to apply corrections. Please try again or type 'cancel' to abort.");
     }
   } else if (state === "AWAITING_SPLIT") {
+    console.log(`[WhatsApp Bot] Entered branch: AWAITING_SPLIT for ${fromNumber}`);
     if (command === "cancel") {
       if (session.active_proof_id) {
         await admin.from("proofs").delete().eq("id", session.active_proof_id);
@@ -316,6 +321,7 @@ export async function processWhatsAppMessage(
       await sendWhatsAppMessage(fromNumber, "Failed to split amounts. Please try again or type 'cancel' to abort.");
     }
   } else if (state === "AWAITING_MENU_CHOICE") {
+    console.log(`[WhatsApp Bot] Entered branch: AWAITING_MENU_CHOICE for ${fromNumber}`);
     if (command === "1") {
       await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
       await sendWhatsAppMessage(fromNumber, "Please send your payment screenshot now. 📸");
@@ -331,6 +337,7 @@ export async function processWhatsAppMessage(
       await sendWhatsAppMessage(fromNumber, "Please reply with 1, 2, 3, or 4.");
     }
   } else if (state === "AWAITING_MONTHLY_MONTH") {
+    console.log(`[WhatsApp Bot] Entered branch: AWAITING_MONTHLY_MONTH for ${fromNumber}`);
     if (command === "cancel") {
       await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
       await sendWhatsAppMessage(fromNumber, "Cancelled. Say 'hi' to see the menu again.");
@@ -409,6 +416,7 @@ export async function processWhatsAppMessage(
     await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
   } else {
     // IDLE but received text
+    console.log(`[WhatsApp Bot] Entered branch: IDLE (fallback) for ${fromNumber}`);
     await admin.from("whatsapp_sessions").update({ current_state: "AWAITING_MENU_CHOICE" }).eq("whatsapp_number", fromNumber);
     const menu = `👋 *LedgerSite Home*\n\n1️⃣ Upload payment screenshot\n2️⃣ Get monthly ledger\n3️⃣ Get worker / party ledger\n4️⃣ Help / Done\n\nPlease reply with a number.`;
     await sendWhatsAppMessage(fromNumber, menu);
