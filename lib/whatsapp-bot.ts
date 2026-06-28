@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractFromImage, reviseExtractedDetails, splitExtractedDetails } from "@/lib/extract";
 import { generateLedgerExcelBuffer } from "@/lib/excel";
+import { logActivity } from "@/lib/activity_logger";
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -151,18 +152,57 @@ export async function processWhatsAppMessage(
           .eq("whatsapp_number", fromNumber);
         await sendWhatsAppMessage(fromNumber, "✅ Split Ledger draft created successfully!");
       } else {
-        // Normal save
+        // Normal save - create ledger draft if party and amount exist
         if (session.active_proof_id) {
-          await admin
-            .from("proofs")
-            .update({ processing_status: "reviewed" })
-            .eq("id", session.active_proof_id);
+          const { data: proof } = await admin.from("proofs").select("*").eq("id", session.active_proof_id).single();
+          
+          if (proof) {
+            if (proof.extracted_party && proof.extracted_amount != null) {
+              const entryDate = proof.extracted_date || new Date().toISOString().slice(0, 10);
+              
+              const { data: insertedEntry } = await admin.from("ledger_entries").insert({
+                user_id: session.user_id,
+                proof_id: proof.id,
+                entry_date: entryDate,
+                amount: proof.extracted_amount,
+                entry_type: proof.extracted_entry_type || "expense",
+                party_name: proof.extracted_party,
+                category: proof.extracted_category || "misc",
+                note: proof.comment || "",
+                project_name: proof.project_name || null,
+                is_split: false,
+                split_allocations: []
+              }).select().single();
+
+              if (insertedEntry) {
+                await admin.from("proofs").update({ processing_status: "linked", linked_entry_id: insertedEntry.id }).eq("id", proof.id);
+                
+                await logActivity(admin, {
+                  entity_type: "proof",
+                  entity_id: Number(proof.id),
+                  action: "draft_created",
+                  details: { ledger_entry_id: insertedEntry.id }
+                });
+                
+                await logActivity(admin, {
+                  entity_type: "ledger_entry",
+                  entity_id: insertedEntry.id,
+                  action: "draft_created",
+                  details: { proof_id: proof.id }
+                });
+              } else {
+                 await admin.from("proofs").update({ processing_status: "reviewed" }).eq("id", proof.id);
+              }
+            } else {
+               await admin.from("proofs").update({ processing_status: "reviewed" }).eq("id", proof.id);
+            }
+          }
         }
         await admin
           .from("whatsapp_sessions")
           .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
           .eq("whatsapp_number", fromNumber);
-        await sendWhatsAppMessage(fromNumber, "✅ Proof saved successfully to your LedgerSite inbox!");
+        await sendWhatsAppMessage(fromNumber, "✅ Ledger draft created successfully in your LedgerSite inbox!");
       }
     } else if (command === "2" || command === "edit") {
       await admin
