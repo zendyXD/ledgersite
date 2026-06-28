@@ -77,19 +77,33 @@ export async function POST(request: NextRequest) {
     // Run the bot processing in the background using waitUntil so Twilio doesn't time out
     // and Vercel knows to keep the function alive until the promise resolves.
     waitUntil(
-      import("@/lib/whatsapp-bot").then(({ processWhatsAppMessage }) => {
-        return processWhatsAppMessage(
-          fromNumber,
-          messageSid,
-          bodyText,
-          numMedia,
-          mediaUrl0,
-          mimeType,
-          baseUrl
-        );
-      }).catch((error) => {
-        console.error("Background WhatsApp process failed:", error);
-      })
+      (async () => {
+        console.log(`[WhatsApp Webhook] Background process started for ${fromNumber}`);
+        
+        let processWhatsAppMessage;
+        try {
+          const module = await import("@/lib/whatsapp-bot");
+          processWhatsAppMessage = module.processWhatsAppMessage;
+        } catch (error) {
+          console.error(`[WhatsApp Webhook] Failed to import whatsapp-bot for ${fromNumber}:`, error);
+          return; // Exit early if import fails
+        }
+
+        try {
+          await processWhatsAppMessage(
+            fromNumber,
+            messageSid,
+            bodyText,
+            numMedia,
+            mediaUrl0,
+            mimeType,
+            baseUrl
+          );
+          console.log(`[WhatsApp Webhook] Background process completed successfully for ${fromNumber}`);
+        } catch (error) {
+          console.error(`[WhatsApp Webhook] Error in processWhatsAppMessage for ${fromNumber}:`, error);
+        }
+      })()
     );
 
     // Immediately return 200 OK so Twilio doesn't retry
