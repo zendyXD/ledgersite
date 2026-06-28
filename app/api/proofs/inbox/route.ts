@@ -56,7 +56,9 @@ export async function GET(request: NextRequest) {
         extracted_category,
         extracted_entry_type,
         project_name,
-        linked_entry_id
+        linked_entry_id,
+        source,
+        metadata
       `)
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
@@ -67,7 +69,7 @@ export async function GET(request: NextRequest) {
     if (status) {
       query = query.eq("processing_status", status);
     } else {
-      query = query.neq("processing_status", "queue");
+      query = query.or("processing_status.neq.queue,source.eq.whatsapp");
     }
 
     const { data, error } = await query;
