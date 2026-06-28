@@ -153,14 +153,17 @@ export async function processWhatsAppMessage(
         await sendWhatsAppMessage(fromNumber, "✅ Split Ledger draft created successfully!");
       } else {
         // Normal save - create ledger draft if party and amount exist
+        console.log(`[WhatsApp Bot - Save Flow] Starting normal save for ${fromNumber}. Active Proof ID: ${session.active_proof_id}`);
         if (session.active_proof_id) {
           const { data: proof } = await admin.from("proofs").select("*").eq("id", session.active_proof_id).single();
           
           if (proof) {
+            console.log(`[WhatsApp Bot - Save Flow] Found proof. Party: "${proof.extracted_party}", Amount: ${proof.extracted_amount}`);
             if (proof.extracted_party && proof.extracted_amount != null) {
               const entryDate = proof.extracted_date || new Date().toISOString().slice(0, 10);
+              console.log(`[WhatsApp Bot - Save Flow] Attempting to insert ledger_entry with Date: ${entryDate}`);
               
-              const { data: insertedEntry } = await admin.from("ledger_entries").insert({
+              const { data: insertedEntry, error: insertError } = await admin.from("ledger_entries").insert({
                 user_id: session.user_id,
                 proof_id: proof.id,
                 entry_date: entryDate,
@@ -174,7 +177,12 @@ export async function processWhatsAppMessage(
                 split_allocations: []
               }).select().single();
 
+              if (insertError) {
+                console.error(`[WhatsApp Bot - Save Flow] Ledger entry insert ERROR:`, insertError);
+              }
+
               if (insertedEntry) {
+                console.log(`[WhatsApp Bot - Save Flow] Successfully inserted ledger_entry ID: ${insertedEntry.id}`);
                 await admin.from("proofs").update({ processing_status: "linked", linked_entry_id: insertedEntry.id }).eq("id", proof.id);
                 
                 await logActivity(admin, {
@@ -191,11 +199,15 @@ export async function processWhatsAppMessage(
                   details: { proof_id: proof.id }
                 });
               } else {
+                 console.log(`[WhatsApp Bot - Save Flow] Fallback: Marking proof as reviewed because insert failed/returned null.`);
                  await admin.from("proofs").update({ processing_status: "reviewed" }).eq("id", proof.id);
               }
             } else {
+               console.log(`[WhatsApp Bot - Save Flow] Missing required fields. Falling back to marking as reviewed.`);
                await admin.from("proofs").update({ processing_status: "reviewed" }).eq("id", proof.id);
             }
+          } else {
+             console.log(`[WhatsApp Bot - Save Flow] Could not find proof record for ID ${session.active_proof_id}`);
           }
         }
         await admin
