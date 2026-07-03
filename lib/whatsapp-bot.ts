@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractFromImage, reviseExtractedDetails, splitExtractedDetails } from "@/lib/extract";
-import { generateLedgerExcelBuffer } from "@/lib/excel";
+import { generateLedgerExcelBuffer, generateDetailedExportBuffer } from "@/lib/excel";
 import { logActivity } from "@/lib/activity_logger";
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -450,7 +450,8 @@ export async function processWhatsAppMessage(
     }
 
     try {
-      const excelBuffer = await generateLedgerExcelBuffer(entries);
+      const monthStr = `${y}-${m.toString().padStart(2, '0')}`;
+      const excelBuffer = await generateDetailedExportBuffer(entries, { month: monthStr });
       const fileName = `exports/monthly_${y}_${m}_${Date.now()}.xlsx`;
       await admin.storage.from("proofs").upload(fileName, excelBuffer, { contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", upsert: true });
       const { data: signedData } = await admin.storage.from("proofs").createSignedUrl(fileName, 3600);
