@@ -1,0 +1,1 @@
+import { createAdminClient } from "@/lib/supabase/admin"; import { NextResponse } from "next/server"; export async function GET() { const admin = createAdminClient(); const { data, error } = await admin.from("ledger_entries").select("*").limit(5); return NextResponse.json({ data, error }); }

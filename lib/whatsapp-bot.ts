@@ -426,22 +426,25 @@ export async function processWhatsAppMessage(
     await sendTypingIndicator(fromNumber);
     await sendWhatsAppMessage(fromNumber, "Fetching your ledger... ⏳");
 
-    const startStr = `${y}-${m.toString().padStart(2, '0')}-01`;
-    let nextM = m + 1;
-    let nextY = y;
-    if (nextM > 12) {
-      nextM = 1;
-      nextY++;
-    }
-    const endStr = `${nextY}-${nextM.toString().padStart(2, '0')}-01`;
+    const monthStr = `${y}-${m.toString().padStart(2, '0')}`;
 
-    const { data: entries, error } = await admin
+    console.log(`[DEBUG] Raw input: "${bodyText}"`);
+    console.log(`[DEBUG] Parsed year/month: y=${y}, m=${m}`);
+    console.log(`[DEBUG] monthStr: ${monthStr}`);
+
+    const { data: allEntries, error } = await admin
       .from("ledger_entries")
       .select("*")
       .eq("user_id", userId)
-      .gte("entry_date", startStr)
-      .lt("entry_date", endStr)
       .order("entry_date", { ascending: true });
+
+    const entries = allEntries?.filter(e => e.entry_date?.startsWith(monthStr)) || [];
+    
+    console.log(`[DEBUG] Supabase error:`, error);
+    console.log(`[DEBUG] Returned row count:`, entries.length);
+    if (entries.length > 0) {
+      console.log(`[DEBUG] First 3 entries' entry_date:`, entries.slice(0, 3).map(e => e.entry_date));
+    }
 
     if (error || !entries || entries.length === 0) {
       await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
