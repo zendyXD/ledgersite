@@ -118,122 +118,22 @@ export async function processWhatsAppMessage(
   if (state === "AWAITING_ACTION") {
     console.log(`[WhatsApp Bot] Entered branch: AWAITING_ACTION for ${fromNumber}`);
     if (command === "1" || command === "save") {
-      // Check for split allocations
-      const contextData = session.context_data || {};
-      const splitAllocations = contextData.split_allocations;
+      const payload = session.context_data?.pending_proof_payload;
+      if (payload) {
+        // Move file from pending to permanent
+        const oldPath = payload.file_path;
+        const newPath = oldPath.replace('pending/whatsapp/', 'uploads/');
+        const { error: moveError } = await admin.storage.from("proofs").move(oldPath, newPath);
+        if (!moveError) {
+          payload.file_path = newPath;
+        }
 
-      if (splitAllocations && splitAllocations.length > 0 && session.active_proof_id) {
-        // Fetch the proof to link it
-        const { data: proof } = await admin.from("proofs").select("*").eq("id", session.active_proof_id).single();
+        // Create proof
+        const { data: proof, error: insertError } = await admin.from("proofs").insert(payload).select().single();
         if (proof) {
-          const entryDate = proof.extracted_date || new Date().toISOString().slice(0, 10);
-          
-          // Create ledger entry
-          const { data: insertedEntry } = await admin.from("ledger_entries").insert({
-            user_id: session.user_id,
-            proof_id: proof.id,
-            entry_date: entryDate,
-            amount: proof.extracted_amount,
-            entry_type: proof.extracted_entry_type || "expense",
-            party_name: proof.extracted_party,
-            category: proof.extracted_category || "misc",
-            note: proof.comment || "",
-            is_split: true,
-            split_allocations: splitAllocations
-          }).select().single();
-
-          if (insertedEntry) {
-            await admin.from("proofs").update({ processing_status: "linked", linked_entry_id: insertedEntry.id }).eq("id", proof.id);
-          }
+          // Create ledger draft
+          await saveProofAsLedgerDraft(admin, proof, session.user_id, []);
         }
-        await admin
-          .from("whatsapp_sessions")
-          .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
-          .eq("whatsapp_number", fromNumber);
-        await sendWhatsAppMessage(fromNumber, "✅ Split Ledger draft created successfully!");
-      } else {
-        // Normal save - create ledger draft if party and amount exist
-        console.log(`[WhatsApp Bot - Save Flow] Starting normal save for ${fromNumber}. Active Proof ID: ${session.active_proof_id}`);
-        if (session.active_proof_id) {
-          const { data: proof } = await admin.from("proofs").select("*").eq("id", session.active_proof_id).single();
-          
-          if (proof) {
-            console.log(`[WhatsApp Bot - Save Flow] Found proof. Party: "${proof.extracted_party}", Amount: ${proof.extracted_amount}`);
-            if (proof.extracted_party && proof.extracted_amount != null) {
-              const entryDate = proof.extracted_date || new Date().toISOString().slice(0, 10);
-              console.log(`[WhatsApp Bot - Save Flow] Attempting to insert ledger_entry with Date: ${entryDate}`);
-              
-              const { data: insertedEntry, error: insertError } = await admin.from("ledger_entries").insert({
-                user_id: session.user_id,
-                proof_id: proof.id,
-                entry_date: entryDate,
-                amount: proof.extracted_amount,
-                entry_type: proof.extracted_entry_type || "expense",
-                party_name: proof.extracted_party,
-                category: proof.extracted_category || "misc",
-                note: proof.comment || "",
-                project_name: proof.project_name || null,
-                is_split: false,
-                split_allocations: []
-              }).select().single();
-
-              if (insertError) {
-                console.error(`[WhatsApp Bot - Save Flow] Ledger entry insert ERROR:`, insertError);
-              }
-
-              if (insertedEntry) {
-                console.log(`[WhatsApp Bot - Save Flow] Successfully inserted ledger_entry ID: ${insertedEntry.id}`);
-                await admin.from("proofs").update({ processing_status: "linked", linked_entry_id: insertedEntry.id }).eq("id", proof.id);
-                
-                await logActivity(admin, {
-                  entity_type: "proof",
-                  entity_id: Number(proof.id),
-                  action: "draft_created",
-                  details: { ledger_entry_id: insertedEntry.id }
-                });
-                
-                await logActivity(admin, {
-                  entity_type: "ledger_entry",
-                  entity_id: insertedEntry.id,
-                  action: "draft_created",
-                  details: { proof_id: proof.id }
-                });
-              } else {
-                 console.log(`[WhatsApp Bot - Save Flow] Fallback: Marking proof as reviewed because insert failed/returned null.`);
-                 await admin.from("proofs").update({ processing_status: "reviewed" }).eq("id", proof.id);
-              }
-            } else {
-               console.log(`[WhatsApp Bot - Save Flow] Missing required fields. Falling back to marking as reviewed.`);
-               await admin.from("proofs").update({ processing_status: "reviewed" }).eq("id", proof.id);
-            }
-          } else {
-             console.log(`[WhatsApp Bot - Save Flow] Could not find proof record for ID ${session.active_proof_id}`);
-          }
-        }
-        await admin
-          .from("whatsapp_sessions")
-          .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
-          .eq("whatsapp_number", fromNumber);
-        await sendWhatsAppMessage(fromNumber, "✅ Ledger draft created successfully in your LedgerSite inbox!");
-      }
-    } else if (command === "2" || command === "edit") {
-      await admin
-        .from("whatsapp_sessions")
-        .update({ current_state: "AWAITING_EDIT" })
-        .eq("whatsapp_number", fromNumber);
-        
-      await sendWhatsAppMessage(fromNumber, "Please send your correction (e.g., 'Amount is 500' or 'Party is Uber').");
-    } else if (command === "3" || command === "split") {
-      await admin
-        .from("whatsapp_sessions")
-        .update({ current_state: "AWAITING_SPLIT" })
-        .eq("whatsapp_number", fromNumber);
-        
-      await sendWhatsAppMessage(fromNumber, "Please send your split instructions (e.g., '200 for food, 300 for travel').");
-    } else if (command === "4" || command === "cancel") {
-      // Cancel proof
-      if (session.active_proof_id) {
-        await admin.from("proofs").delete().eq("id", session.active_proof_id);
       }
       
       await admin
@@ -241,136 +141,16 @@ export async function processWhatsAppMessage(
         .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
         .eq("whatsapp_number", fromNumber);
         
-      await sendWhatsAppMessage(fromNumber, "❌ Proof cancelled and discarded.");
+      await sendWhatsAppMessage(fromNumber, "✅ Proof saved and draft ledger entry created!");
+    } else if (command === "2" || command === "cancel") {
+      await admin
+        .from("whatsapp_sessions")
+        .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
+        .eq("whatsapp_number", fromNumber);
+        
+      await sendWhatsAppMessage(fromNumber, "❌ Cancelled. No data was saved.");
     } else {
-      await sendWhatsAppMessage(fromNumber, "Please reply with *1* to Save, *2* to Edit, *3* to Split, or *4* to Cancel.");
-    }
-  } else if (state === "AWAITING_EDIT") {
-    console.log(`[WhatsApp Bot] Entered branch: AWAITING_EDIT for ${fromNumber}`);
-    if (command === "cancel") {
-      if (session.active_proof_id) {
-        await admin.from("proofs").delete().eq("id", session.active_proof_id);
-      }
-      await admin
-        .from("whatsapp_sessions")
-        .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null })
-        .eq("whatsapp_number", fromNumber);
-      await sendWhatsAppMessage(fromNumber, "❌ Edit cancelled. Proof discarded.");
-      return;
-    }
-
-    if (!session.active_proof_id) {
-      await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
-      await sendWhatsAppMessage(fromNumber, "Session expired or proof not found. Please send a new image.");
-      return;
-    }
-
-    await sendTypingIndicator(fromNumber);
-    await sendWhatsAppMessage(fromNumber, "Applying corrections... ⏳");
-
-    // Fetch existing proof
-    const { data: proof } = await admin.from("proofs").select("*").eq("id", session.active_proof_id).single();
-    if (!proof) {
-      await admin.from("whatsapp_sessions").update({ current_state: "IDLE", active_proof_id: null }).eq("whatsapp_number", fromNumber);
-      await sendWhatsAppMessage(fromNumber, "Proof not found. Please send a new image.");
-      return;
-    }
-
-    const currentFields = {
-      extracted_party: proof.extracted_party,
-      extracted_amount: proof.extracted_amount,
-      extracted_date: proof.extracted_date,
-      guessed_category: proof.extracted_category,
-      guessed_type: proof.extracted_entry_type
-    };
-
-    try {
-      const revised = await reviseExtractedDetails(currentFields, bodyText);
-      
-      // Update proof
-      await admin.from("proofs").update({
-        extracted_party: revised.extracted_party,
-        extracted_amount: revised.extracted_amount,
-        extracted_date: revised.extracted_date,
-        extracted_category: revised.guessed_category || proof.extracted_category,
-        extracted_entry_type: revised.guessed_type || proof.extracted_entry_type
-      }).eq("id", proof.id);
-
-      // Return to AWAITING_ACTION
-      await admin.from("whatsapp_sessions").update({ current_state: "AWAITING_ACTION" }).eq("whatsapp_number", fromNumber);
-
-      const summary = `🧾 *Revised Details*\nParty: ${revised.extracted_party || "Unknown"}\nAmount: ₹${revised.extracted_amount || "0.00"}\nDate: ${revised.extracted_date || "Unknown"}\n\nWhat would you like to do?\n1️⃣ Save\n2️⃣ Edit\n3️⃣ Split\n4️⃣ Cancel`;
-      await sendWhatsAppMessage(fromNumber, summary);
-    } catch (err) {
-      console.error("Revision failed", err);
-      await sendWhatsAppMessage(fromNumber, "Failed to apply corrections. Please try again or type 'cancel' to abort.");
-    }
-  } else if (state === "AWAITING_SPLIT") {
-    console.log(`[WhatsApp Bot] Entered branch: AWAITING_SPLIT for ${fromNumber}`);
-    if (command === "cancel") {
-      if (session.active_proof_id) {
-        await admin.from("proofs").delete().eq("id", session.active_proof_id);
-      }
-      await admin
-        .from("whatsapp_sessions")
-        .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
-        .eq("whatsapp_number", fromNumber);
-      await sendWhatsAppMessage(fromNumber, "❌ Split cancelled. Proof discarded.");
-      return;
-    }
-
-    if (!session.active_proof_id) {
-      await admin.from("whatsapp_sessions").update({ current_state: "IDLE", context_data: {} }).eq("whatsapp_number", fromNumber);
-      await sendWhatsAppMessage(fromNumber, "Session expired or proof not found. Please send a new image.");
-      return;
-    }
-
-    await sendTypingIndicator(fromNumber);
-    await sendWhatsAppMessage(fromNumber, "Splitting amounts... ⏳");
-
-    const { data: proof } = await admin.from("proofs").select("*").eq("id", session.active_proof_id).single();
-    if (!proof) {
-      await admin.from("whatsapp_sessions").update({ current_state: "IDLE", active_proof_id: null, context_data: {} }).eq("whatsapp_number", fromNumber);
-      await sendWhatsAppMessage(fromNumber, "Proof not found. Please send a new image.");
-      return;
-    }
-
-    const currentFields = {
-      extracted_party: proof.extracted_party,
-      extracted_amount: proof.extracted_amount,
-      extracted_date: proof.extracted_date,
-      guessed_category: proof.extracted_category,
-      guessed_type: proof.extracted_entry_type
-    };
-
-    try {
-      const splitResult = await splitExtractedDetails(currentFields, bodyText);
-      const splits = splitResult.splits || [];
-      
-      const totalSplitAmount = splits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-      const originalAmount = Number(proof.extracted_amount) || 0;
-
-      // Allow a tiny tolerance for floating point math
-      if (Math.abs(totalSplitAmount - originalAmount) > 1.0) {
-        await sendWhatsAppMessage(fromNumber, `⚠️ The total of your splits (₹${totalSplitAmount}) does not match the proof amount (₹${originalAmount}). Please send a new split instruction or type 'cancel'.`);
-        return;
-      }
-
-      await admin.from("whatsapp_sessions").update({ 
-        current_state: "AWAITING_ACTION",
-        context_data: { ...session.context_data, split_allocations: splits }
-      }).eq("whatsapp_number", fromNumber);
-
-      let splitText = `🧾 *Split Preview*\n`;
-      splits.forEach((s, i) => {
-        splitText += `${i + 1}. ₹${s.amount || 0} - ${s.category || "Misc"} (${s.party_name || proof.extracted_party || "Unknown"})\n`;
-      });
-      splitText += `\nWhat would you like to do?\n1️⃣ Save\n2️⃣ Edit\n3️⃣ Split\n4️⃣ Cancel`;
-
-      await sendWhatsAppMessage(fromNumber, splitText);
-    } catch (err) {
-      console.error("Split failed", err);
-      await sendWhatsAppMessage(fromNumber, "Failed to split amounts. Please try again or type 'cancel' to abort.");
+      await sendWhatsAppMessage(fromNumber, "Please reply with *1* to Save or *2* to Cancel.");
     }
   } else if (state === "AWAITING_MENU_CHOICE") {
     console.log(`[WhatsApp Bot] Entered branch: AWAITING_MENU_CHOICE for ${fromNumber}`);
@@ -501,7 +281,7 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
   }
   const base64Image = Buffer.from(new Uint8Array(arrayBuffer)).toString("base64");
   const safeName = `whatsapp-${Date.now()}.jpg`;
-  const filePath = `uploads/${safeName}`;
+  const filePath = `pending/whatsapp/${safeName}`;
 
   // Upload to Supabase Storage
   const { error: uploadError } = await admin.storage
@@ -542,7 +322,7 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     return;
   }
 
-  // Insert into proofs
+  // Build proof payload (but do not insert yet)
   const proofPayload = {
     user_id: userId,
     file_path: filePath,
@@ -558,33 +338,70 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     metadata: { whatsapp_sender: fromNumber }
   };
   
-  console.log(`[WhatsApp Bot] Attempting to insert proof for ${fromNumber}:`, JSON.stringify(proofPayload, null, 2));
-
-  const { data: insertedProof, error: insertError } = await admin
-    .from("proofs")
-    .insert(proofPayload)
-    .select()
-    .single();
-
-  if (insertError) {
-    console.error(`[WhatsApp Bot] Error inserting proof for ${fromNumber}:`, insertError);
-    await sendWhatsAppMessage(fromNumber, "Failed to create proof record in database.");
-    return;
-  }
-  
-  console.log(`[WhatsApp Bot] Successfully inserted proof with ID: ${insertedProof.id}`);
-
-  // Update session to AWAITING_ACTION
+  // Store in session and await confirmation
   await admin
     .from("whatsapp_sessions")
     .update({ 
       current_state: "AWAITING_ACTION", 
-      active_proof_id: insertedProof.id,
-      pending_message_sid: messageSid
+      active_proof_id: null,
+      pending_message_sid: messageSid,
+      context_data: { pending_proof_payload: proofPayload }
     })
     .eq("whatsapp_number", fromNumber);
 
   // Send summary
-  const summary = `🧾 *Extracted Details*\nParty: ${finalParty || "Unknown"}\nAmount: ₹${finalAmount || "0.00"}\nDate: ${finalDate || "Unknown"}\n\nWhat would you like to do?\n1️⃣ Save\n2️⃣ Edit\n3️⃣ Split\n4️⃣ Cancel`;
+  let summary = `🧾 *Extracted Details*\nParty: ${finalParty || "Unknown"}\nAmount: ₹${finalAmount || "0.00"}\nDate: ${finalDate || "Unknown"}\n\n`;
+  summary += `Reply with *1* to Save or *2* to Cancel.`;
+  
   await sendWhatsAppMessage(fromNumber, summary);
+}
+
+export async function saveProofAsLedgerDraft(admin: any, proof: any, userId: string, splitAllocations: any[] = []) {
+  // Safe fallbacks to guarantee insert
+  const entryDate = proof.extracted_date || new Date().toISOString().slice(0, 10);
+  const safeAmount = proof.extracted_amount != null ? proof.extracted_amount : 0;
+  const safeParty = proof.extracted_party || "Unknown Party";
+
+  console.log(`[saveProofAsLedgerDraft] Inserting ledger_entry with Date: ${entryDate}`);
+  
+  const { data: insertedEntry, error: insertError } = await admin.from("ledger_entries").insert({
+    user_id: userId,
+    proof_id: proof.id,
+    entry_date: entryDate,
+    amount: safeAmount,
+    entry_type: proof.extracted_entry_type || "expense",
+    party_name: safeParty,
+    category: proof.extracted_category || "misc",
+    note: proof.comment || "",
+    project_name: proof.project_name || null,
+    is_split: splitAllocations.length > 0,
+    split_allocations: splitAllocations
+  }).select().single();
+
+  if (insertError) {
+    console.error(`[saveProofAsLedgerDraft] Ledger entry insert ERROR:`, insertError);
+    await admin.from("proofs").update({ processing_status: "reviewed" }).eq("id", proof.id);
+    return null;
+  }
+
+  if (insertedEntry) {
+    console.log(`[saveProofAsLedgerDraft] Successfully inserted ledger_entry ID: ${insertedEntry.id}`);
+    await admin.from("proofs").update({ processing_status: "linked", linked_entry_id: insertedEntry.id }).eq("id", proof.id);
+    
+    await logActivity(admin, {
+      entity_type: "proof",
+      entity_id: Number(proof.id),
+      action: "draft_created",
+      details: { ledger_entry_id: insertedEntry.id }
+    });
+    
+    await logActivity(admin, {
+      entity_type: "ledger_entry",
+      entity_id: insertedEntry.id,
+      action: "draft_created",
+      details: { proof_id: proof.id }
+    });
+    return insertedEntry;
+  }
+  return null;
 }
