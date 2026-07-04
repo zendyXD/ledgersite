@@ -630,7 +630,14 @@ export default function InboxPage() {
                       {proof.processing_status === "reviewed" ? (
                         <span className="inline-flex items-center rounded-full bg-blue-100 border border-blue-300 px-2 py-0.5 text-[10px] font-bold text-blue-800">Reviewed</span>
                       ) : proof.processing_status === "linked" ? (
-                        <span className="inline-flex items-center rounded-full bg-indigo-100 border border-indigo-300 px-2 py-0.5 text-[10px] font-bold text-indigo-800">Linked</span>
+                        (() => {
+                          const isFinalised = ledgerEntries.find(e => e.id === proof.linked_entry_id)?.is_finalised;
+                          return isFinalised ? (
+                            <span className="inline-flex items-center rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-800">Finalised</span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-purple-100 border border-purple-300 px-2 py-0.5 text-[10px] font-bold text-purple-800">Draft</span>
+                          );
+                        })()
                       ) : proof.processing_status === "needs_rework" ? (
                         <span className="inline-flex items-center rounded-full bg-red-100 border border-red-300 px-2 py-0.5 text-[10px] font-bold text-red-800">Needs Rework</span>
                       ) : proof.processing_status === "drafted" ? (
@@ -662,8 +669,8 @@ export default function InboxPage() {
                   <div className="flex flex-col items-end gap-1">
                     <span className="text-xs text-slate-400">{new Date(proof.created_at).toLocaleString()}</span>
                     {proof.source === 'whatsapp' && (
-                      <span className="inline-flex items-center rounded-full bg-[#25D366]/10 px-2 py-0.5 text-[10px] font-bold text-[#128C7E] border border-[#25D366]/20">
-                        WhatsApp
+                      <span className="inline-flex items-center rounded-full bg-[#25D366]/10 px-2.5 py-0.5 text-[11px] font-bold text-[#128C7E] border border-[#25D366]/30 shadow-sm">
+                        💬 WhatsApp
                       </span>
                     )}
                   </div>
@@ -706,16 +713,29 @@ export default function InboxPage() {
                     </button>
                   )}
 
-                  {proof.linked_entry_id && (
-                    <>
-                      <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-800">
-                        Linked #{proof.linked_entry_id}
-                      </span>
-                      <a href={`/ledger?highlight=${proof.linked_entry_id}`} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-100">
-                        Go to ledger
-                      </a>
-                    </>
-                  )}
+                  {proof.linked_entry_id && (() => {
+                    const linkedEntry = ledgerEntries.find(e => e.id === proof.linked_entry_id);
+                    const isFinalised = linkedEntry?.is_finalised;
+                    return isFinalised ? (
+                      <>
+                        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-800">
+                          Finalised #{proof.linked_entry_id}
+                        </span>
+                        <a href={`/ledger?highlight=${proof.linked_entry_id}`} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-100">
+                          View ledger
+                        </a>
+                      </>
+                    ) : (
+                      <>
+                        <span className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-[11px] font-medium text-purple-800">
+                          Draft #{proof.linked_entry_id}
+                        </span>
+                        <a href={`/ledger?highlight=${proof.linked_entry_id}`} className="rounded-lg bg-purple-700 text-white px-4 py-2 text-xs font-bold hover:bg-purple-800 shadow-sm">
+                          Review draft
+                        </a>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )})}
