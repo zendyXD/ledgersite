@@ -20,11 +20,11 @@ export default function Sidebar() {
   if (hideOnRoutes.includes(pathname)) return null;
 
   return (
-    <aside className="hidden md:flex flex-col w-52 h-full bg-white border-r border-slate-200 px-3 py-6 shrink-0 overflow-y-auto">
+    <aside className="hidden md:flex flex-col w-52 h-full bg-[var(--card)] border-r border-[var(--border)] px-3 py-6 shrink-0 overflow-y-auto">
       {/* Branding */}
       <div className="mb-8 px-2">
-        <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">LedgerSite</p>
-        <p className="text-[11px] text-slate-400 mt-0.5">Construction bookkeeping</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">LedgerSite</p>
+        <p className="text-[11px] text-[var(--muted)] mt-0.5">Construction bookkeeping</p>
       </div>
 
       {/* Nav links */}
@@ -32,25 +32,27 @@ export default function Sidebar() {
         {navItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href.split("#")[0]) && item.href.split("#")[0] !== "/";
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-              }`}
-            >
-              <span className="text-base">{item.icon}</span>
-              {item.label}
-            </Link>
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                  isActive
+                    ? "bg-[var(--card-muted)] text-[var(--foreground)] font-semibold border-l-2 border-[var(--primary)] rounded-l-none"
+                    : "text-[var(--muted)] font-medium hover:bg-[var(--card-muted)] hover:text-[var(--foreground)] border-l-2 border-transparent rounded-l-none"
+                }`}
+              >
+                <span className={`text-base transition-colors ${isActive ? "text-[var(--primary)]" : "group-hover:text-[var(--foreground)]"}`}>
+                  {item.icon}
+                </span>
+                {item.label}
+              </Link>
           );
         })}
       </nav>
 
       {/* Bottom */}
       <div className="mt-auto px-2">
-        <p className="text-[10px] text-slate-300">MVP v1</p>
+        <p className="text-[10px] text-[var(--muted)] opacity-70">MVP v1</p>
       </div>
     </aside>
   );

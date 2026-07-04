@@ -181,3 +181,77 @@ button {
     opacity: 0.45;
   }
 }
+
+html.dark {
+  color-scheme: dark;
+  /* Deep charcoal background, not pure black */
+  --background: #0f1117; 
+  /* High contrast white/gray text */
+  --foreground: #f8fafc; 
+  --muted: #94a3b8; 
+  /* Soft panel layering */
+  --card: #181b24; 
+  --card-elevated: #222631; 
+  --card-muted: #1e212b; 
+  /* Subtle borders */
+  --border: #272b36; 
+  /* Inputs */
+  --input-bg: #181b24;
+  --input-text: #f8fafc;
+  --input-placeholder: #64748b;
+  /* Teal/Green finance accent */
+  --primary: #14b8a6; 
+  --primary-hover: #0d9488;
+  /* Status Colors */
+  --danger-bg: #451a1a;
+  --danger-text: #fca5a5;
+  --success-bg: #064e3b;
+  --success-text: #6ee7b7;
+}
+
+/* Dark Theme Migration Utility Classes */
+
+/* Page Background */
+.theme-page {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* Panel/Card Surface */
+.surface-panel {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+}
+
+/* Elevated Panel (Modals, Dropdowns) */
+.surface-elevated {
+  background-color: var(--card-elevated);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
+}
+
+/* Subtle Border Treatment */
+.border-subtle {
+  border-color: var(--border);
+}
+
+/* Muted Text */
+.text-theme-muted {
+  color: var(--muted);
+}
+
+/* Primary Accent Button/Link Treatment */
+.btn-theme-accent {
+  background-color: var(--primary);
+  color: #ffffff;
+  font-weight: 600;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1rem;
+  transition: background-color 0.2s ease;
+  border: none;
+}
+.btn-theme-accent:hover {
+  background-color: var(--primary-hover);
+}
