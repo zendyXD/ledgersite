@@ -1,5 +1,7 @@
 export async function extractFromImage(imageBase64: string, mimeType: string, commentContext?: string | null): Promise<{
   extracted_party: string | null;
+  extracted_beneficiary?: string | null;
+  extracted_note?: string | null;
   extracted_amount: number | null;
   extracted_date: string | null;
   extracted_text: string | null;
@@ -15,14 +17,23 @@ export async function extractFromImage(imageBase64: string, mimeType: string, co
   // Ensure base64 string doesn't contain the data URL prefix
   const base64Data = imageBase64.replace(/^data:.*?;base64,/, "");
 
-  const prompt = `Extract bookkeeping details from the provided invoice/receipt image.
+const prompt = `Extract bookkeeping details from the provided invoice/receipt image.
 Additional context from user: ${commentContext || "None"}
 
 IMPORTANT: You must extract details for ANY type of payment screenshot or receipt. 
 Tip for PhonePe: specifically look for 'Banking Name', 'Debited from', and 'Transfer Details' fields to identify the party.
 
+USER NOTE HANDLING:
+Do NOT treat the user note only as an OCR override. Treat it as a high-priority business-context hint that may clarify weak OCR, add meaning not visible in the image, or explicitly override fields when the user is clear.
+When the note implies "paid to X for Y" or "X a/c Y", do not collapse both people into one field.
+- Set "extracted_party" to the paid-to / account holder.
+- Set "extracted_beneficiary" to the beneficiary / for-person.
+- Set "extracted_note" to a readable version of the original note.
+
 Return a JSON object with EXACTLY the following fields:
 - extracted_party (string or null): the person or business paid or received from.
+- extracted_beneficiary (string or null): the beneficiary or for-person, if distinct from the account holder.
+- extracted_note (string or null): the interpreted meaning of the user note or transaction context.
 - extracted_amount (number or null): the total amount of the transaction.
 - extracted_date (string or null): the date of the transaction in YYYY-MM-DD format.
 - extracted_text (string or null): all relevant text found in the image.
@@ -75,6 +86,8 @@ Return a JSON object with EXACTLY the following fields:
     const parsed = JSON.parse(textResponse);
     return {
       extracted_party: parsed.extracted_party ?? null,
+      extracted_beneficiary: parsed.extracted_beneficiary ?? null,
+      extracted_note: parsed.extracted_note ?? null,
       extracted_amount: parsed.extracted_amount ?? null,
       extracted_date: parsed.extracted_date ?? null,
       extracted_text: parsed.extracted_text ?? null,

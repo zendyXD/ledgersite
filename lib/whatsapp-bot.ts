@@ -163,6 +163,37 @@ export async function processWhatsAppMessage(
     } else {
       await sendWhatsAppMessage(fromNumber, "Please reply with *1* to Save or *2* / *3* to Cancel/Delete.");
     }
+  } else if (state === "AWAITING_NOTE") {
+    console.log(`[WhatsApp Bot] Entered branch: AWAITING_NOTE for ${fromNumber}`);
+    const skipWords = ["skip", "no", "none"];
+    const userNote = skipWords.includes(command) ? "" : bodyText;
+    
+    const ctx = session.context_data || {};
+    const filePath = ctx.pending_file_path;
+    const pendingMimeType = ctx.pending_mime_type || "image/jpeg";
+    const originalName = ctx.original_name || "whatsapp_upload.jpg";
+
+    if (!filePath) {
+      await admin.from("whatsapp_sessions").update({ current_state: "IDLE", context_data: {} }).eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "Sorry, I lost the image context. Please upload it again.");
+      return;
+    }
+
+    await sendTypingIndicator(fromNumber);
+    await sendWhatsAppMessage(fromNumber, "Extracting details... ⏳");
+
+    const { data, error } = await admin.storage.from("proofs").download(filePath);
+    if (error || !data) {
+      console.error("Failed to download pending image", error);
+      await admin.from("whatsapp_sessions").update({ current_state: "IDLE", context_data: {} }).eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "Sorry, I had trouble retrieving the image. Please upload it again.");
+      return;
+    }
+
+    const arrayBuffer = await data.arrayBuffer();
+    const imageBase64 = Buffer.from(new Uint8Array(arrayBuffer)).toString("base64");
+
+    await runExtractionAndPreview(fromNumber, userId, messageSid, imageBase64, pendingMimeType, filePath, originalName, userNote, admin, arrayBuffer);
   } else if (state === "AWAITING_MENU_CHOICE") {
     console.log(`[WhatsApp Bot] Entered branch: AWAITING_MENU_CHOICE for ${fromNumber}`);
     if (command === "1") {
@@ -304,16 +335,43 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     return;
   }
 
-  // Extract
+  if (!bodyText) {
+    // No caption, wait for note
+    await admin
+      .from("whatsapp_sessions")
+      .update({
+        current_state: "AWAITING_NOTE",
+        active_proof_id: null,
+        pending_message_sid: messageSid,
+        context_data: { 
+          pending_file_path: filePath,
+          pending_mime_type: mimeType,
+          original_name: safeName
+        }
+      })
+      .eq("whatsapp_number", fromNumber);
+    await sendWhatsAppMessage(fromNumber, "Any note for this payment? Example: Rs 1500 Rakesh a/c Roshan k liye kharcha\n\nReply with note or type Skip.");
+    return;
+  }
+
+  // Caption exists, run extraction immediately
+  await runExtractionAndPreview(fromNumber, userId, messageSid, base64Image, mimeType, filePath, safeName, bodyText, admin, arrayBuffer);
+}
+
+async function runExtractionAndPreview(fromNumber: string, userId: string, messageSid: string, base64Image: string, mimeType: string, filePath: string, originalName: string, userNote: string, admin: any, arrayBuffer: ArrayBuffer) {
   let finalParty = null;
+  let finalBeneficiary = null;
+  let finalExtractedNote = null;
   let finalAmount = null;
   let finalDate = null;
   let finalCategory = "Other";
   let finalType = "expense";
 
   try {
-    const extractionResult = await extractFromImage(base64Image, mimeType || "image/jpeg", bodyText);
+    const extractionResult = await extractFromImage(base64Image, mimeType || "image/jpeg", userNote);
     finalParty = extractionResult.extracted_party;
+    finalBeneficiary = extractionResult.extracted_beneficiary;
+    finalExtractedNote = extractionResult.extracted_note;
     finalAmount = extractionResult.extracted_amount;
     finalDate = extractionResult.extracted_date;
     finalCategory = extractionResult.guessed_category || "Other";
@@ -339,7 +397,7 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
   try {
     sha256Hash = crypto.createHash("sha256").update(new Uint8Array(arrayBuffer)).digest("hex");
     const img = await Jimp.read(Buffer.from(arrayBuffer));
-    pHash = img.hash(2); // 64-bit binary string
+    pHash = img.hash(2);
   } catch (err) {
     console.error("Hashing failed", err);
   }
@@ -350,7 +408,7 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     .select("id, extracted_party, extracted_amount, metadata")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
-    .limit(50); // check last 50 for performance
+    .limit(50);
 
   let isExactDuplicate = false;
   let isLikelyDuplicate = false;
@@ -361,7 +419,6 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
       const oldSha256 = pMetadata.sha256_hash;
       const oldPhash = pMetadata.phash_binary;
 
-      // Exact check
       if (sha256Hash && oldSha256 === sha256Hash) {
         isExactDuplicate = true;
         break;
@@ -386,12 +443,17 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     }
   }
 
-  // Build proof payload (but do not insert yet)
+  // Build combined comment
+  let finalComment = userNote || "";
+  if (finalBeneficiary) {
+    finalComment = `[Beneficiary: ${finalBeneficiary}] ` + finalComment;
+  }
+
   const proofPayload = {
     user_id: userId,
     file_path: filePath,
-    original_name: "WhatsApp Upload",
-    comment: bodyText || "",
+    original_name: originalName,
+    comment: finalComment.trim(),
     extracted_party: finalParty,
     extracted_amount: finalAmount,
     extracted_date: finalDate,
@@ -402,11 +464,12 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     metadata: { 
       whatsapp_sender: fromNumber,
       sha256_hash: sha256Hash,
-      phash_binary: pHash
+      phash_binary: pHash,
+      beneficiary: finalBeneficiary || null,
+      user_note_raw: userNote || null
     }
   };
   
-  // Store in session and await confirmation
   await admin
     .from("whatsapp_sessions")
     .update({ 
@@ -417,7 +480,6 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     })
     .eq("whatsapp_number", fromNumber);
 
-  // Send summary
   if (isExactDuplicate) {
     const summary = `This image already exists.\n\n1️⃣ Save anyway\n2️⃣ Delete\n3️⃣ Cancel`;
     await sendWhatsAppMessage(fromNumber, summary);
@@ -427,6 +489,7 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
       summary += `⚠️ Likely duplicate detected. Same amount and party name.\n\n`;
     }
     summary += `🧾 *Extracted Details*\nParty: ${finalParty || "Unknown"}\nAmount: ₹${finalAmount || "0.00"}\nDate: ${finalDate || "Unknown"}\n\n`;
+    if (finalBeneficiary) summary += `Beneficiary: ${finalBeneficiary}\n\n`;
     summary += `Reply with *1* to Save or *2* to Cancel.`;
     
     await sendWhatsAppMessage(fromNumber, summary);
