@@ -2,6 +2,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { extractFromImage, reviseExtractedDetails, splitExtractedDetails } from "@/lib/extract";
 import { generateLedgerExcelBuffer, generateDetailedExportBuffer } from "@/lib/excel";
 import { logActivity } from "@/lib/activity_logger";
+import crypto from "crypto";
+import { Jimp } from "jimp";
+
+function hammingDistance(s1: string, s2: string): number {
+  if (!s1 || !s2 || s1.length !== s2.length) return 999;
+  let d = 0;
+  for (let i = 0; i < s1.length; i++) {
+    if (s1[i] !== s2[i]) d++;
+  }
+  return d;
+}
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -142,7 +153,7 @@ export async function processWhatsAppMessage(
         .eq("whatsapp_number", fromNumber);
         
       await sendWhatsAppMessage(fromNumber, "✅ Proof saved and draft ledger entry created!");
-    } else if (command === "2" || command === "cancel") {
+    } else if (command === "2" || command === "cancel" || command === "3" || command === "delete") {
       await admin
         .from("whatsapp_sessions")
         .update({ current_state: "IDLE", active_proof_id: null, pending_message_sid: null, context_data: {} })
@@ -150,7 +161,7 @@ export async function processWhatsAppMessage(
         
       await sendWhatsAppMessage(fromNumber, "❌ Cancelled. No data was saved.");
     } else {
-      await sendWhatsAppMessage(fromNumber, "Please reply with *1* to Save or *2* to Cancel.");
+      await sendWhatsAppMessage(fromNumber, "Please reply with *1* to Save or *2* / *3* to Cancel/Delete.");
     }
   } else if (state === "AWAITING_MENU_CHOICE") {
     console.log(`[WhatsApp Bot] Entered branch: AWAITING_MENU_CHOICE for ${fromNumber}`);
@@ -322,6 +333,59 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     return;
   }
 
+  // Calculate hashes
+  let sha256Hash = "";
+  let pHash = "";
+  try {
+    sha256Hash = crypto.createHash("sha256").update(new Uint8Array(arrayBuffer)).digest("hex");
+    const img = await Jimp.read(Buffer.from(arrayBuffer));
+    pHash = img.hash(2); // 64-bit binary string
+  } catch (err) {
+    console.error("Hashing failed", err);
+  }
+
+  // Check for duplicates
+  const { data: recentProofs } = await admin
+    .from("proofs")
+    .select("id, extracted_party, extracted_amount, metadata")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(50); // check last 50 for performance
+
+  let isExactDuplicate = false;
+  let isLikelyDuplicate = false;
+
+  if (recentProofs) {
+    for (const p of recentProofs) {
+      const pMetadata = p.metadata || {};
+      const oldSha256 = pMetadata.sha256_hash;
+      const oldPhash = pMetadata.phash_binary;
+
+      // Exact check
+      if (sha256Hash && oldSha256 === sha256Hash) {
+        isExactDuplicate = true;
+        break;
+      }
+      if (pHash && oldPhash && hammingDistance(pHash, oldPhash) <= 5) {
+        isExactDuplicate = true;
+        break;
+      }
+    }
+
+    if (!isExactDuplicate && finalAmount !== null && finalParty !== null) {
+      const normFinal = finalParty.toLowerCase().replace(/[^a-z0-9]/g, '');
+      for (const p of recentProofs) {
+        if (p.extracted_amount === finalAmount && p.extracted_party) {
+          const normOld = p.extracted_party.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (normFinal === normOld && normFinal !== '') {
+            isLikelyDuplicate = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
   // Build proof payload (but do not insert yet)
   const proofPayload = {
     user_id: userId,
@@ -335,7 +399,11 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     extracted_entry_type: finalType,
     processing_status: "unprocessed",
     source: "whatsapp",
-    metadata: { whatsapp_sender: fromNumber }
+    metadata: { 
+      whatsapp_sender: fromNumber,
+      sha256_hash: sha256Hash,
+      phash_binary: pHash
+    }
   };
   
   // Store in session and await confirmation
@@ -350,10 +418,19 @@ async function processNewProofUpload(fromNumber: string, userId: string, mediaUr
     .eq("whatsapp_number", fromNumber);
 
   // Send summary
-  let summary = `🧾 *Extracted Details*\nParty: ${finalParty || "Unknown"}\nAmount: ₹${finalAmount || "0.00"}\nDate: ${finalDate || "Unknown"}\n\n`;
-  summary += `Reply with *1* to Save or *2* to Cancel.`;
-  
-  await sendWhatsAppMessage(fromNumber, summary);
+  if (isExactDuplicate) {
+    const summary = `This image already exists.\n\n1️⃣ Save anyway\n2️⃣ Delete\n3️⃣ Cancel`;
+    await sendWhatsAppMessage(fromNumber, summary);
+  } else {
+    let summary = ``;
+    if (isLikelyDuplicate) {
+      summary += `⚠️ Likely duplicate detected. Same amount and party name.\n\n`;
+    }
+    summary += `🧾 *Extracted Details*\nParty: ${finalParty || "Unknown"}\nAmount: ₹${finalAmount || "0.00"}\nDate: ${finalDate || "Unknown"}\n\n`;
+    summary += `Reply with *1* to Save or *2* to Cancel.`;
+    
+    await sendWhatsAppMessage(fromNumber, summary);
+  }
 }
 
 export async function saveProofAsLedgerDraft(admin: any, proof: any, userId: string, splitAllocations: any[] = []) {
