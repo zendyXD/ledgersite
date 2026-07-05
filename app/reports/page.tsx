@@ -586,28 +586,28 @@ async function handleExportPartyLedgerExcel() {
 )}
 
               <div className="mb-6 grid gap-4 md:grid-cols-4">
-                <div className="rounded-xl border border-green-300 dark:border-green-500/20 bg-green-50 dark:bg-green-500/10 p-4 shadow-sm">
+                <div className="rounded-xl border border-green-300 bg-green-50 dark:border-[var(--border)] dark:bg-[var(--card)] p-4 shadow-sm">
                   <p className="text-sm font-medium text-green-800 dark:text-green-400">Total income</p>
                   <p className="text-2xl font-bold text-green-900 dark:text-green-300">
                     ₹{totalIncome.toFixed(2)}
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-red-300 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10 p-4 shadow-sm">
+                <div className="rounded-xl border border-red-300 bg-red-50 dark:border-[var(--border)] dark:bg-[var(--card)] p-4 shadow-sm">
                   <p className="text-sm font-medium text-red-800 dark:text-red-400">Total expense</p>
                   <p className="text-2xl font-bold text-red-900 dark:text-red-300">
                     ₹{totalExpense.toFixed(2)}
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-slate-300 dark:border-slate-500/20 bg-slate-100 dark:bg-slate-500/10 p-4 shadow-sm">
+                <div className="rounded-xl border border-slate-300 bg-slate-100 dark:border-[var(--border)] dark:bg-[var(--card)] p-4 shadow-sm">
                   <p className="text-sm font-medium text-slate-700 dark:text-slate-400">Net</p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-slate-300">
                     ₹{netAmount.toFixed(2)}
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-blue-300 dark:border-blue-500/20 bg-blue-50 dark:bg-blue-500/10 p-4 shadow-sm">
+                <div className="rounded-xl border border-blue-300 bg-blue-50 dark:border-[var(--border)] dark:bg-[var(--card)] p-4 shadow-sm">
                   <p className="text-sm font-medium text-blue-800 dark:text-blue-400">Entries</p>
                   <p className="text-2xl font-bold text-blue-900 dark:text-blue-300">{entryCount}</p>
                 </div>

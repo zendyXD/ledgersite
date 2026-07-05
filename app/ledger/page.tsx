@@ -440,15 +440,15 @@ export default function LedgerPage() {
           
           return (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
-              <div className="rounded-xl border border-orange-200 bg-orange-50 dark:border-orange-500/20 dark:bg-orange-500/10 p-4 shadow-sm flex flex-col justify-center items-center text-center">
+              <div className="rounded-xl border border-orange-200 bg-orange-50 dark:border-[var(--border)] dark:bg-[var(--card)] p-4 shadow-sm flex flex-col justify-center items-center text-center">
                 <span className="text-3xl font-bold text-orange-700 dark:text-orange-400">{missingCount}</span>
                 <span className="text-xs font-bold text-orange-800 dark:text-orange-500 uppercase tracking-widest mt-1">Missing Fields</span>
               </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-orange-500/20 dark:bg-orange-500/10 p-4 shadow-sm flex flex-col justify-center items-center text-center">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-[var(--border)] dark:bg-[var(--card)] p-4 shadow-sm flex flex-col justify-center items-center text-center">
                 <span className="text-3xl font-bold text-amber-700 dark:text-orange-400">{reviewCount}</span>
                 <span className="text-xs font-bold text-amber-800 dark:text-orange-500 uppercase tracking-widest mt-1">Needs Review</span>
               </div>
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-500/10 p-4 shadow-sm flex flex-col justify-center items-center text-center">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-[var(--border)] dark:bg-[var(--card)] p-4 shadow-sm flex flex-col justify-center items-center text-center">
                 <span className="text-3xl font-bold text-emerald-700 dark:text-emerald-400">{readyCount}</span>
                 <span className="text-xs font-bold text-emerald-800 dark:text-emerald-500 uppercase tracking-widest mt-1">Ready to Finalise</span>
               </div>
@@ -524,15 +524,15 @@ export default function LedgerPage() {
                 <div className="text-2xl font-bold text-[var(--foreground)]">{filteredEntries.length}</div>
                 <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--muted)] mt-1">Total Entries</div>
               </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-orange-500/20 dark:bg-orange-500/10 p-4 shadow-sm text-center">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-[var(--border)] dark:bg-[var(--card)] p-4 shadow-sm text-center">
                 <div className="text-2xl font-bold text-amber-700 dark:text-orange-400">{draftCount}</div>
                 <div className="text-[11px] font-bold uppercase tracking-wider text-amber-600 dark:text-orange-500 mt-1">Drafts</div>
               </div>
-              <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-500/20 dark:bg-blue-500/10 p-4 shadow-sm text-center">
+              <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-[var(--border)] dark:bg-[var(--card)] p-4 shadow-sm text-center">
                 <div className="text-2xl font-bold text-blue-700 dark:text-blue-400">{confirmedCount}</div>
                 <div className="text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-500 mt-1">Confirmed</div>
               </div>
-              <div className={`rounded-xl border p-4 shadow-sm text-center transition-colors ${attentionCount > 0 ? "border-rose-200 bg-rose-50 dark:border-rose-500/20 dark:bg-rose-500/10" : "border-[var(--border)] bg-[var(--card)]"}`}>
+              <div className={`rounded-xl border p-4 shadow-sm text-center transition-colors ${attentionCount > 0 ? "border-rose-200 bg-rose-50 dark:border-[var(--border)] dark:bg-[var(--card)]" : "border-[var(--border)] bg-[var(--card)]"}`}>
                 <div className={`text-2xl font-bold ${attentionCount > 0 ? "text-rose-700 dark:text-rose-400" : "text-[var(--foreground)]"}`}>{attentionCount}</div>
                 <div className={`text-[11px] font-bold uppercase tracking-wider mt-1 ${attentionCount > 0 ? "text-rose-600 dark:text-rose-500" : "text-[var(--muted)]"}`}>Needs Attention</div>
               </div>

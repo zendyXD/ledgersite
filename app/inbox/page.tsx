@@ -520,15 +520,15 @@ export default function InboxPage() {
 
         {/* Exception Summary Bar */}
         <div className="grid grid-cols-3 gap-3 md:gap-6">
-          <div className="rounded-xl border border-red-200 bg-red-50 dark:border-red-500/20 dark:bg-red-500/10 p-4 shadow-sm flex flex-col justify-center items-center text-center">
+          <div className="rounded-xl border border-red-200 bg-red-50 dark:border-[var(--border)] dark:bg-[var(--card)] p-4 shadow-sm flex flex-col justify-center items-center text-center">
             <span className="text-3xl font-bold text-red-700 dark:text-red-400">{proofCounts.exceptions_duplicates}</span>
             <span className="text-xs font-bold text-red-800 dark:text-red-500 uppercase tracking-widest mt-1">Duplicates</span>
           </div>
-          <div className="rounded-xl border border-orange-200 bg-orange-50 dark:border-orange-500/20 dark:bg-orange-500/10 p-4 shadow-sm flex flex-col justify-center items-center text-center">
+          <div className="rounded-xl border border-orange-200 bg-orange-50 dark:border-[var(--border)] dark:bg-[var(--card)] p-4 shadow-sm flex flex-col justify-center items-center text-center">
             <span className="text-3xl font-bold text-orange-700 dark:text-orange-400">{proofCounts.exceptions_missing}</span>
             <span className="text-xs font-bold text-orange-800 dark:text-orange-500 uppercase tracking-widest mt-1">Missing Info</span>
           </div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-orange-500/20 dark:bg-orange-500/10 p-4 shadow-sm flex flex-col justify-center items-center text-center">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-[var(--border)] dark:bg-[var(--card)] p-4 shadow-sm flex flex-col justify-center items-center text-center">
             <span className="text-3xl font-bold text-amber-700 dark:text-orange-400">{proofCounts.exceptions_stalled}</span>
             <span className="text-xs font-bold text-amber-800 dark:text-orange-500 uppercase tracking-widest mt-1">Stalled at Review</span>
           </div>
