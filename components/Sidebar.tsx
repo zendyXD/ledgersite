@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LayoutDashboard, UploadCloud, Inbox, BookOpen, CalendarClock, BarChart3 } from "lucide-react";
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: "⊞" },
-  { label: "Upload", href: "/uploads", icon: "↑" },
-  { label: "Inbox", href: "/inbox", icon: "▤" },
-  { label: "Ledger", href: "/ledger", icon: "₹" },
-  { label: "Monthly Close", href: "/close", icon: "⏱" },
-  { label: "Reports", href: "/reports", icon: "↗" },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Upload", href: "/uploads", icon: UploadCloud },
+  { label: "Inbox", href: "/inbox", icon: Inbox },
+  { label: "Ledger", href: "/ledger", icon: BookOpen },
+  { label: "Monthly Close", href: "/close", icon: CalendarClock },
+  { label: "Reports", href: "/reports", icon: BarChart3 },
 ];
 
 const hideOnRoutes = ["/login", "/signup"];
@@ -35,14 +36,14 @@ export default function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-300 ${
                   isActive
-                    ? "bg-[var(--card-muted)] text-[var(--foreground)] font-semibold border-l-2 border-[var(--primary)] rounded-l-none"
+                    ? "bg-[var(--card-muted)] text-[var(--foreground)] font-semibold border-l-2 border-[var(--primary)] shadow-[inset_6px_0_12px_-6px_rgba(20,184,166,0.25)] rounded-l-none"
                     : "text-[var(--muted)] font-medium hover:bg-[var(--card-muted)] hover:text-[var(--foreground)] border-l-2 border-transparent rounded-l-none"
                 }`}
               >
-                <span className={`text-base transition-colors ${isActive ? "text-[var(--primary)]" : "group-hover:text-[var(--foreground)]"}`}>
-                  {item.icon}
+                <span className={`text-base transition-colors ${isActive ? "text-[var(--primary)]" : "text-[var(--muted)] group-hover:text-[var(--foreground)]"}`}>
+                  <item.icon className="w-5 h-5" strokeWidth={2} />
                 </span>
                 {item.label}
               </Link>

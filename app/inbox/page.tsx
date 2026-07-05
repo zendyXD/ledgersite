@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import Link from "next/link";
+import { Search, Inbox as InboxIcon, AlertCircle, FileText, CheckCircle2, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 type Proof = {
@@ -495,14 +497,19 @@ export default function InboxPage() {
       <div className="max-w-5xl mx-auto space-y-6">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">Proof Inbox</h1>
-            <p className="text-sm text-[var(--muted)] mt-0.5">Review, extract, and convert proofs to ledger entries</p>
+        <div className="flex items-center justify-between border-b border-[var(--border)] pb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-[var(--primary)]/10 rounded-lg">
+              <InboxIcon className="w-6 h-6 text-[var(--primary)]" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--foreground)]">Proof Inbox</h1>
+              <p className="text-sm text-[var(--muted)] mt-0.5">Review, extract, and convert proofs to ledger entries</p>
+            </div>
           </div>
-          <a href="/uploads" className="btn-theme-accent">
-            + Upload proof
-          </a>
+          <Link href="/uploads" className="btn-theme-accent flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Upload proof
+          </Link>
         </div>
 
         {message && (
@@ -548,8 +555,11 @@ export default function InboxPage() {
                 </div>
               )}
             </div>
-            <div className="flex gap-2 flex-wrap">
-              <input type="text" placeholder="Search..." className="rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--input-text)] placeholder:text-[var(--input-placeholder)] w-48 focus:outline-none focus:ring-2 focus:ring-[var(--border)]" value={proofSearch} onChange={(e) => setProofSearch(e.target.value)} />
+            <div className="flex gap-2 flex-wrap items-center">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--input-placeholder)]" />
+                <input type="text" placeholder="Search..." className="rounded-lg border border-[var(--border)] bg-[var(--input-bg)] pl-9 pr-3 py-2 text-sm text-[var(--input-text)] placeholder:text-[var(--input-placeholder)] w-48 focus:outline-none focus:ring-2 focus:ring-[var(--border)]" value={proofSearch} onChange={(e) => setProofSearch(e.target.value)} />
+              </div>
               <select className="rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--input-text)] focus:outline-none" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
                 <option value="newest">Newest</option>
                 <option value="oldest">Oldest</option>
@@ -572,7 +582,7 @@ export default function InboxPage() {
               { label: "Linked", value: "linked", count: proofCounts.linked },
             ].map((f) => (
               <button key={f.value} type="button" onClick={() => setReadinessFilter(f.value)}
-                className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${readinessFilter === f.value ? (f.value === "exceptions" ? "bg-red-700 text-white border-red-700 dark:bg-red-600 dark:border-red-600" : "bg-slate-900 dark:bg-slate-700 text-white border-slate-900 dark:border-slate-700") : (f.color || "bg-[var(--card)] text-[var(--foreground)] border-[var(--border)] hover:bg-[var(--card-muted)]")}`}>
+                className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors flex items-center gap-1 ${readinessFilter === f.value ? (f.value === "exceptions" ? "bg-red-700 text-white border-red-700 dark:bg-red-600 dark:border-red-600" : "bg-[var(--foreground)] text-[var(--card)] border-[var(--foreground)]") : (f.color || "bg-[var(--card)] text-[var(--foreground)] border-[var(--border)] hover:bg-[var(--card-muted)]")}`}>
                 {f.label} <span className={`ml-1 opacity-70 ${readinessFilter === f.value ? "text-white" : ""}`}>{f.count}</span>
               </button>
             ))}
@@ -583,10 +593,11 @@ export default function InboxPage() {
         {loadingProofs ? (
           <p className="text-sm text-[var(--muted)]">Loading proofs...</p>
         ) : sortedProofs.length === 0 ? (
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 text-center">
+          <div className="rounded-xl border border-[var(--border)] border-dashed bg-[var(--card)] p-12 text-center flex flex-col items-center">
+            <FileText className="w-12 h-12 text-[var(--muted)] opacity-30 mb-4" />
             <p className="text-sm font-medium text-[var(--foreground)]">No proofs found</p>
             <p className="mt-1 text-xs text-[var(--muted)]">Try clearing your search or switching filter.</p>
-            {isFiltered && <button type="button" onClick={clearAllControls} className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)]">Clear all</button>}
+            {isFiltered && <button type="button" onClick={clearAllControls} className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)]">Clear all filters</button>}
           </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">

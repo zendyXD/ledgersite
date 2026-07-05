@@ -3,6 +3,7 @@
 import { useEffect, useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { BookOpen, Search, FolderOpen, ChevronRight, CheckCircle2, CircleDashed, Plus, TrendingDown, TrendingUp } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
  
 type LedgerEntry = {
@@ -405,17 +406,22 @@ export default function LedgerPage() {
       <div className="max-w-5xl mx-auto space-y-6">
         
         {/* Top Header Block */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">Main Ledger</h1>
-            <p className="text-sm text-[var(--muted)] mt-0.5">Final construction accounts and proof drafts</p>
+        <div className="flex items-center justify-between border-b border-[var(--border)] pb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-[var(--primary)]/10 rounded-lg">
+              <BookOpen className="w-6 h-6 text-[var(--primary)]" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--foreground)]">Main Ledger</h1>
+              <p className="text-sm text-[var(--muted)] mt-0.5">Final construction accounts and proof drafts</p>
+            </div>
           </div>
           <div className="flex gap-2">
             <Link href="/inbox" className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors">
               ← View Proof Inbox
             </Link>
-            <Link href="/uploads" className="btn-theme-accent">
-              + Upload New Proof
+            <Link href="/uploads" className="btn-theme-accent flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Upload New Proof
             </Link>
           </div>
         </div>
@@ -492,11 +498,12 @@ export default function LedgerPage() {
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex items-center gap-3 w-full sm:w-auto relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--input-placeholder)]" />
             <input
               type="text"
               placeholder="Search party, category, or notes..."
-              className="w-full sm:w-64 rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--input-text)] placeholder:text-[var(--input-placeholder)] focus:outline-none focus:ring-2 focus:ring-[var(--border)]"
+              className="w-full sm:w-64 rounded-lg border border-[var(--border)] bg-[var(--input-bg)] pl-9 pr-3 py-2 text-sm text-[var(--input-text)] placeholder:text-[var(--input-placeholder)] focus:outline-none focus:ring-2 focus:ring-[var(--border)]"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -537,8 +544,10 @@ export default function LedgerPage() {
         {loading ? (
           <p className="text-sm text-[var(--muted)]">Loading ledger files...</p>
         ) : filteredEntries.length === 0 ? (
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 text-center text-[var(--muted)] text-sm">
-            No entries found matching your search.
+          <div className="rounded-2xl border border-[var(--border)] border-dashed bg-[var(--card)] p-12 text-center text-[var(--muted)] flex flex-col items-center">
+            <FolderOpen className="w-12 h-12 opacity-30 mb-4" />
+            <p className="text-sm font-medium text-[var(--foreground)]">No entries found matching your search.</p>
+            <p className="text-xs mt-1">Try adjusting your filters or clearing the search query.</p>
           </div>
         ) : (
           <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-sm overflow-hidden">
@@ -574,9 +583,13 @@ export default function LedgerPage() {
 
                     return (
                       <Fragment key={entry.id}>
-                        <tr id={`ledger-entry-${entry.id}`} className={`transition-all duration-300 ${isEditing ? "bg-[var(--card-muted)] border-y-2 border-y-[var(--primary)]" : highlightEntryId === entry.id ? "!bg-[var(--primary)]/10 border-l-4 !border-l-[var(--primary)]" : selectedEntryIds.has(entry.id) ? "bg-[var(--primary)]/5 border-l-4 border-l-[var(--primary)]/50" : isDraft ? "bg-[var(--card)] hover:bg-[var(--card-muted)] border-l-4 border-l-transparent" : "bg-[var(--card)]/50 hover:bg-[var(--card-muted)] border-l-4 border-l-transparent text-[var(--muted)]"}`}>
+                        <tr id={`ledger-entry-${entry.id}`} className={`group transition-all duration-300 relative ${isEditing ? "bg-[var(--card-muted)] border-y-2 border-y-[var(--primary)]" : highlightEntryId === entry.id ? "!bg-[var(--primary)]/10 border-l-4 !border-l-[var(--primary)]" : selectedEntryIds.has(entry.id) ? "bg-[var(--primary)]/5 border-l-4 border-l-[var(--primary)]/50" : isDraft ? "bg-[var(--card)] hover:bg-[var(--card-muted)] border-l-4 border-l-transparent cursor-pointer" : "bg-[var(--card)]/50 hover:bg-[var(--card-muted)] border-l-4 border-l-transparent text-[var(--muted)] cursor-pointer"}`} onClick={(e) => {
+                          if ((e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'BUTTON' && (e.target as HTMLElement).tagName !== 'SELECT' && !isEditing) {
+                            toggleExpandHistory(entry.id);
+                          }
+                        }}>
                           <td className="p-4">
-                            <input type="checkbox" checked={selectedEntryIds.has(entry.id)} onChange={() => toggleSelectEntry(entry.id)} className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]" />
+                            <input type="checkbox" checked={selectedEntryIds.has(entry.id)} onChange={() => toggleSelectEntry(entry.id)} className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)] cursor-pointer" onClick={(e) => e.stopPropagation()} />
                           </td>
                           {/* 1. DATE COLUMN */}
                           <td className="p-4 font-medium text-[var(--muted)] whitespace-nowrap">
@@ -606,9 +619,12 @@ export default function LedgerPage() {
                                 <option value="income">Income</option>
                               </select>
                             ) : (
-                              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                isExpense ? "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 dark:border dark:border-red-500/20" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border dark:border-emerald-500/20"
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide uppercase shadow-sm ${
+                                isExpense 
+                                  ? "bg-gradient-to-r from-rose-50 to-rose-100/50 text-rose-700 border border-rose-200 dark:from-rose-500/10 dark:to-rose-500/5 dark:text-rose-400 dark:border-rose-500/20" 
+                                  : "bg-gradient-to-r from-emerald-50 to-emerald-100/50 text-emerald-700 border border-emerald-200 dark:from-emerald-500/10 dark:to-emerald-500/5 dark:text-emerald-400 dark:border-emerald-500/20"
                               }`}>
+                                {isExpense ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
                                 {isExpense ? "Expense" : "Income"}
                               </span>
                             )}
@@ -660,21 +676,21 @@ export default function LedgerPage() {
                                 <div>
                                   {isDraft ? (
                                     entry.review_status === "reviewed" ? (
-                                      <span className="inline-flex items-center rounded-full bg-teal-50 border border-teal-200 text-teal-700 dark:bg-teal-500/10 dark:border-teal-500/20 dark:text-teal-400 px-2 py-0.5 text-[11px] font-semibold">
-                                        Reviewed
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-200 text-teal-700 dark:bg-teal-500/10 dark:border-teal-500/20 dark:text-teal-400 px-2 py-0.5 text-[11px] font-semibold">
+                                        <CheckCircle2 className="w-3 h-3" /> Reviewed
                                       </span>
                                     ) : hasMissing ? (
-                                      <span className="inline-flex items-center rounded-full bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-400 px-2 py-0.5 text-[11px] font-semibold">
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-400 px-2 py-0.5 text-[11px] font-semibold">
                                         Needs Review
                                       </span>
                                     ) : (
-                                      <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200 text-amber-700 dark:bg-orange-500/10 dark:border-orange-500/20 dark:text-orange-400 px-2 py-0.5 text-[11px] font-semibold">
-                                        Draft
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 dark:bg-orange-500/10 dark:border-orange-500/20 dark:text-orange-400 px-2 py-0.5 text-[11px] font-semibold">
+                                        <CircleDashed className="w-3 h-3" /> Draft
                                       </span>
                                     )
                                   ) : (
-                                    <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 text-blue-700 dark:bg-blue-500/10 dark:border-blue-500/20 dark:text-blue-400 px-2 py-0.5 text-[11px] font-semibold">
-                                      Confirmed
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 dark:bg-blue-500/10 dark:border-blue-500/20 dark:text-blue-400 px-2 py-0.5 text-[11px] font-semibold">
+                                      <CheckCircle2 className="w-3 h-3" /> Confirmed
                                     </span>
                                   )}
                                   {hasMissing && isDraft && (
@@ -852,9 +868,12 @@ export default function LedgerPage() {
                             {isEditing ? (
                               <input type="number" step="0.01" className={`${inputClass} text-right font-bold`} value={editAmount} onChange={(e) => setEditAmount(e.target.value)} />
                             ) : (
-                              <span className={isExpense ? "text-[var(--foreground)]" : "text-emerald-700 dark:text-emerald-400"}>
-                                {isExpense ? "-" : "+"}₹{Number(entry.amount).toFixed(2)}
-                              </span>
+                              <div className="flex items-center justify-end gap-2">
+                                <span className={isExpense ? "text-[var(--foreground)]" : "text-emerald-700 dark:text-emerald-400"}>
+                                  {isExpense ? "-" : "+"}₹{Number(entry.amount).toFixed(2)}
+                                </span>
+                                <ChevronRight className="w-4 h-4 text-[var(--muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
                             )}
                           </td>
 

@@ -165,6 +165,10 @@ export default function DashboardPage() {
   const linkedProofCount = useMemo(() => {
     return ledgerEntries.filter((entry) => entry.proof_id !== null).length;
   }, [ledgerEntries]);
+  
+  const pendingReviews = useMemo(() => {
+    return proofs.length;
+  }, [proofs]);
 
   const recentEntries = useMemo(() => {
     return [...ledgerEntries]
@@ -179,15 +183,20 @@ export default function DashboardPage() {
     <main className="p-4 md:p-8">
       <div className="mx-auto max-w-5xl space-y-8">
         <section className="surface-panel p-4">
-          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold text-[var(--foreground)]">LedgerSite Dashboard</h1>
-              <p className="text-sm text-[var(--muted)]">
-                Your bookkeeping workspace is ready.
-              </p>
-              <p className="mt-1 text-xs text-[var(--muted)]">
-                Logged in as: {userEmail || "Loading..."}
-              </p>
+          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-[var(--border)] pb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-[var(--primary)]/10 rounded-lg">
+                <LayoutDashboard className="w-6 h-6 text-[var(--primary)]" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-semibold text-[var(--foreground)]">LedgerSite Dashboard</h1>
+                <p className="text-sm text-[var(--muted)]">
+                  Your bookkeeping workspace is ready.
+                </p>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  Logged in as: {userEmail || "Loading..."}
+                </p>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -211,30 +220,42 @@ export default function DashboardPage() {
             <DashboardSkeleton />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <div className="surface-panel p-4">
-                <p className="text-sm text-[var(--muted)]">Today&apos;s expenses</p>
-                <p className="text-2xl font-semibold text-[var(--foreground)]">
+              <div className="surface-panel p-4 relative overflow-hidden group">
+                <div className="flex justify-between items-start">
+                  <p className="text-sm text-[var(--muted)] font-medium">Today's expenses</p>
+                  <Receipt className="w-4 h-4 text-[var(--muted)] opacity-50 group-hover:text-[var(--primary)] transition-colors" />
+                </div>
+                <p className="text-2xl font-semibold text-[var(--foreground)] mt-2">
                   ₹{todaysExpenses.toFixed(2)}
                 </p>
               </div>
 
-              <div className="surface-panel p-4">
-                <p className="text-sm text-[var(--muted)]">Linked proofs in ledger</p>
-                <p className="text-2xl font-semibold text-[var(--foreground)]">
+              <div className="surface-panel p-4 relative overflow-hidden group">
+                <div className="flex justify-between items-start">
+                  <p className="text-sm text-[var(--muted)] font-medium">Linked proofs in ledger</p>
+                  <LinkIcon className="w-4 h-4 text-[var(--muted)] opacity-50 group-hover:text-[var(--primary)] transition-colors" />
+                </div>
+                <p className="text-2xl font-semibold text-[var(--foreground)] mt-2">
                   {linkedProofCount}
                 </p>
               </div>
 
-              <div className="surface-panel p-4">
-                <p className="text-sm text-[var(--muted)]">Labour payouts</p>
-                <p className="text-2xl font-semibold text-[var(--foreground)]">
+              <div className="surface-panel p-4 relative overflow-hidden group">
+                <div className="flex justify-between items-start">
+                  <p className="text-sm text-[var(--muted)] font-medium">Labour payouts</p>
+                  <Users className="w-4 h-4 text-[var(--muted)] opacity-50 group-hover:text-[var(--primary)] transition-colors" />
+                </div>
+                <p className="text-2xl font-semibold text-[var(--foreground)] mt-2">
                   ₹{labourPayouts.toFixed(2)}
                 </p>
               </div>
 
-              <div className="surface-panel p-4">
-                <p className="text-sm text-[var(--muted)]">This month spend</p>
-                <p className="text-2xl font-semibold text-[var(--foreground)]">
+              <div className="surface-panel p-4 relative overflow-hidden group">
+                <div className="flex justify-between items-start">
+                  <p className="text-sm text-[var(--muted)] font-medium">This month spend</p>
+                  <CreditCard className="w-4 h-4 text-[var(--muted)] opacity-50 group-hover:text-[var(--primary)] transition-colors" />
+                </div>
+                <p className="text-2xl font-semibold text-[var(--foreground)] mt-2">
                   ₹{thisMonthSpend.toFixed(2)}
                 </p>
               </div>
@@ -243,23 +264,32 @@ export default function DashboardPage() {
         </section>
 
         <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-green-300 bg-green-50 dark:border-emerald-500/20 dark:bg-emerald-500/10 p-4">
-            <p className="text-sm font-medium text-green-800 dark:text-emerald-400">This month income</p>
-            <p className="text-2xl font-bold text-green-900 dark:text-emerald-300">
+          <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/40 dark:to-emerald-900/10 p-4 relative overflow-hidden shadow-sm">
+            <div className="flex justify-between items-start">
+              <p className="text-sm font-medium text-emerald-800 dark:text-emerald-400">This month income</p>
+              <TrendingUp className="w-4 h-4 text-emerald-700 dark:text-emerald-400 opacity-60" />
+            </div>
+            <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-300 mt-1">
               ₹{thisMonthIncome.toFixed(2)}
             </p>
           </div>
 
-          <div className="rounded-xl border border-red-300 bg-red-50 dark:border-red-500/20 dark:bg-red-500/10 p-4">
-            <p className="text-sm font-medium text-red-800 dark:text-red-400">This month expense</p>
-            <p className="text-2xl font-bold text-red-900 dark:text-red-300">
+          <div className="rounded-xl border border-rose-500/30 bg-gradient-to-br from-rose-50 to-rose-100/50 dark:from-rose-950/40 dark:to-rose-900/10 p-4 relative overflow-hidden shadow-sm">
+            <div className="flex justify-between items-start">
+              <p className="text-sm font-medium text-rose-800 dark:text-rose-400">This month expense</p>
+              <TrendingDown className="w-4 h-4 text-rose-700 dark:text-rose-400 opacity-60" />
+            </div>
+            <p className="text-2xl font-bold text-rose-900 dark:text-rose-300 mt-1">
               ₹{thisMonthSpend.toFixed(2)}
             </p>
           </div>
 
-          <div className="surface-panel p-4">
-            <p className="text-sm font-medium text-[var(--muted)]">Net this month</p>
-            <p className="text-2xl font-bold text-[var(--foreground)]">
+          <div className="rounded-xl border border-indigo-500/30 bg-gradient-to-br from-indigo-50 to-indigo-100/50 dark:from-indigo-950/40 dark:to-indigo-900/10 p-4 relative overflow-hidden shadow-sm">
+            <div className="flex justify-between items-start">
+              <p className="text-sm font-medium text-indigo-800 dark:text-indigo-400">Net position</p>
+              <TrendingUp className="w-4 h-4 text-indigo-700 dark:text-indigo-400 opacity-60" />
+            </div>
+            <p className="text-2xl font-bold text-indigo-900 dark:text-indigo-300 mt-1">
               ₹{(thisMonthIncome - thisMonthSpend).toFixed(2)}
             </p>
           </div>
