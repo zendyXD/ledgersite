@@ -574,12 +574,12 @@ export default function LedgerPage() {
 
                     return (
                       <Fragment key={entry.id}>
-                        <tr id={`ledger-entry-${entry.id}`} className={`transition-all duration-300 ${isEditing ? "bg-gray-50 dark:bg-gray-800 border-y-2 border-y-blue-500" : highlightEntryId === entry.id ? "!bg-blue-50 dark:!bg-blue-900/20 border-l-4 !border-l-blue-600" : isDraft ? "hover:bg-gray-50 dark:hover:bg-gray-800/50" : "bg-gray-50/50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
+                        <tr id={`ledger-entry-${entry.id}`} className={`transition-all duration-300 ${isEditing ? "bg-[var(--card-muted)] border-y-2 border-y-[var(--primary)]" : highlightEntryId === entry.id ? "!bg-[var(--primary)]/10 border-l-4 !border-l-[var(--primary)]" : selectedEntryIds.has(entry.id) ? "bg-[var(--primary)]/5 border-l-4 border-l-[var(--primary)]/50" : isDraft ? "bg-[var(--card)] hover:bg-[var(--card-muted)] border-l-4 border-l-transparent" : "bg-[var(--card)]/50 hover:bg-[var(--card-muted)] opacity-80 border-l-4 border-l-transparent"}`}>
                           <td className="p-4">
-                            <input type="checkbox" checked={selectedEntryIds.has(entry.id)} onChange={() => toggleSelectEntry(entry.id)} className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500" />
+                            <input type="checkbox" checked={selectedEntryIds.has(entry.id)} onChange={() => toggleSelectEntry(entry.id)} className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]" />
                           </td>
                           {/* 1. DATE COLUMN */}
-                          <td className="p-4 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                          <td className="p-4 font-medium text-[var(--muted)] whitespace-nowrap">
                             {isEditing ? (
                               <input type="date" className={inputClass} value={editDate} onChange={(e) => setEditDate(e.target.value)} />
                             ) : entry.entry_date ? (
