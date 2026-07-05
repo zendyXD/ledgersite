@@ -29,19 +29,19 @@ function ReportSkeleton() {
     <div className="space-y-6" aria-label="Loading reports">
       <div className="grid gap-4 md:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="app-card p-4">
-            <div className="skeleton h-4 w-28" />
-            <div className="skeleton mt-3 h-8 w-24" />
+          <div key={i} className="surface-panel p-4 shadow-sm">
+            <div className="skeleton h-4 w-28 bg-[var(--card-muted)] rounded" />
+            <div className="skeleton mt-3 h-8 w-24 bg-[var(--card-muted)] rounded" />
           </div>
         ))}
       </div>
 
-      <div className="app-card p-4">
-        <div className="skeleton h-10 w-56" />
-        <div className="skeleton mt-4 h-10 w-40" />
-        <div className="skeleton mt-6 h-12 w-full" />
-        <div className="skeleton mt-3 h-12 w-full" />
-        <div className="skeleton mt-3 h-12 w-full" />
+      <div className="surface-panel p-4 shadow-sm">
+        <div className="skeleton h-10 w-56 bg-[var(--card-muted)] rounded" />
+        <div className="skeleton mt-4 h-10 w-40 bg-[var(--card-muted)] rounded" />
+        <div className="skeleton mt-6 h-12 w-full bg-[var(--card-muted)] rounded" />
+        <div className="skeleton mt-3 h-12 w-full bg-[var(--card-muted)] rounded" />
+        <div className="skeleton mt-3 h-12 w-full bg-[var(--card-muted)] rounded" />
       </div>
     </div>
   );
@@ -451,16 +451,16 @@ async function handleExportPartyLedgerExcel() {
   return (
     <main className="page-shell p-4 md:p-8">
       <div className="mx-auto max-w-6xl space-y-8">
-        <section className="app-card p-4">
+        <section className="surface-panel p-4 shadow-sm">
           <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-slate-900">
+              <h1 className="text-2xl font-semibold text-[var(--foreground)]">
                 Ledger reports
               </h1>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-[var(--muted)]">
                 Monthly report view from your centralized ledger.
               </p>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-[var(--muted)]">
                 Logged in as: {userEmail || "Loading..."}
               </p>
             </div>
@@ -489,11 +489,11 @@ async function handleExportPartyLedgerExcel() {
               <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div className="flex flex-wrap gap-4 items-end">
                   <div className="w-full md:w-72">
-                    <label className="mb-2 block text-sm font-medium text-slate-800">
+                    <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
                       Select period
                     </label>
                     <select
-                      className="app-select"
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] text-[var(--input-text)] px-3 py-2 outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
                       value={selectedMonth}
                       onChange={(e) => setSelectedMonth(e.target.value)}
                     >
@@ -504,8 +504,8 @@ async function handleExportPartyLedgerExcel() {
                       ))}
                     </select>
                   </div>
-                  <label className="mb-3 flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700">
-                    <input type="checkbox" checked={includeDrafts} onChange={e => setIncludeDrafts(e.target.checked)} className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 h-4 w-4" />
+                  <label className="mb-3 flex items-center gap-2 cursor-pointer text-sm font-medium text-[var(--muted)]">
+                    <input type="checkbox" checked={includeDrafts} onChange={e => setIncludeDrafts(e.target.checked)} className="rounded border-[var(--border)] bg-[var(--input-bg)] text-teal-600 focus:ring-teal-500 h-4 w-4" />
                     Include drafts
                   </label>
                 </div>
@@ -536,16 +536,16 @@ async function handleExportPartyLedgerExcel() {
 
 {(selectedParty || selectedCategory || partySearch.trim()) && (
   <div className="mb-6 flex flex-wrap items-center gap-2">
-    <span className="text-sm font-medium text-slate-600">Active filters:</span>
+    <span className="text-sm font-medium text-[var(--muted)]">Active filters:</span>
 
     {selectedParty ? (
       <button
         type="button"
         onClick={() => setSelectedParty("")}
-        className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+        className="inline-flex items-center gap-2 rounded-full border border-[var(--primary)] bg-teal-50 dark:bg-teal-500/10 px-3 py-1.5 text-sm text-[var(--primary)] dark:text-teal-400 transition hover:bg-teal-100 dark:hover:bg-teal-500/20"
       >
-        Party: <span className="font-semibold text-slate-900">{selectedParty}</span>
-        <span className="text-slate-400">×</span>
+        Party: <span className="font-semibold">{selectedParty}</span>
+        <span className="text-[var(--primary)]/70">×</span>
       </button>
     ) : null}
 
@@ -553,10 +553,10 @@ async function handleExportPartyLedgerExcel() {
       <button
         type="button"
         onClick={() => setSelectedCategory("")}
-        className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+        className="inline-flex items-center gap-2 rounded-full border border-[var(--primary)] bg-teal-50 dark:bg-teal-500/10 px-3 py-1.5 text-sm text-[var(--primary)] dark:text-teal-400 transition hover:bg-teal-100 dark:hover:bg-teal-500/20"
       >
-        Category: <span className="font-semibold text-slate-900">{selectedCategory}</span>
-        <span className="text-slate-400">×</span>
+        Category: <span className="font-semibold">{selectedCategory}</span>
+        <span className="text-[var(--primary)]/70">×</span>
       </button>
     ) : null}
 
@@ -564,10 +564,10 @@ async function handleExportPartyLedgerExcel() {
       <button
         type="button"
         onClick={() => setPartySearch("")}
-        className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+        className="inline-flex items-center gap-2 rounded-full border border-[var(--primary)] bg-teal-50 dark:bg-teal-500/10 px-3 py-1.5 text-sm text-[var(--primary)] dark:text-teal-400 transition hover:bg-teal-100 dark:hover:bg-teal-500/20"
       >
-        Search: <span className="font-semibold text-slate-900">{partySearch}</span>
-        <span className="text-slate-400">×</span>
+        Search: <span className="font-semibold">{partySearch}</span>
+        <span className="text-[var(--primary)]/70">×</span>
       </button>
     ) : null}
 
@@ -578,7 +578,7 @@ async function handleExportPartyLedgerExcel() {
         setSelectedCategory("");
         setPartySearch("");
       }}
-      className="text-sm font-medium text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline"
+      className="text-sm font-medium text-[var(--muted)] underline-offset-2 hover:text-[var(--foreground)] hover:underline"
     >
       Clear all
     </button>
@@ -586,56 +586,56 @@ async function handleExportPartyLedgerExcel() {
 )}
 
               <div className="mb-6 grid gap-4 md:grid-cols-4">
-                <div className="rounded-xl border border-green-300 bg-green-50 p-4">
-                  <p className="text-sm font-medium text-green-800">Total income</p>
-                  <p className="text-2xl font-bold text-green-900">
+                <div className="rounded-xl border border-green-300 dark:border-green-500/20 bg-green-50 dark:bg-green-500/10 p-4 shadow-sm">
+                  <p className="text-sm font-medium text-green-800 dark:text-green-400">Total income</p>
+                  <p className="text-2xl font-bold text-green-900 dark:text-green-300">
                     ₹{totalIncome.toFixed(2)}
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-red-300 bg-red-50 p-4">
-                  <p className="text-sm font-medium text-red-800">Total expense</p>
-                  <p className="text-2xl font-bold text-red-900">
+                <div className="rounded-xl border border-red-300 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10 p-4 shadow-sm">
+                  <p className="text-sm font-medium text-red-800 dark:text-red-400">Total expense</p>
+                  <p className="text-2xl font-bold text-red-900 dark:text-red-300">
                     ₹{totalExpense.toFixed(2)}
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-slate-300 bg-slate-100 p-4">
-                  <p className="text-sm font-medium text-slate-700">Net</p>
-                  <p className="text-2xl font-bold text-slate-900">
+                <div className="rounded-xl border border-slate-300 dark:border-slate-500/20 bg-slate-100 dark:bg-slate-500/10 p-4 shadow-sm">
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-400">Net</p>
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-300">
                     ₹{netAmount.toFixed(2)}
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-blue-300 bg-blue-50 p-4">
-                  <p className="text-sm font-medium text-blue-800">Entries</p>
-                  <p className="text-2xl font-bold text-blue-900">{entryCount}</p>
+                <div className="rounded-xl border border-blue-300 dark:border-blue-500/20 bg-blue-50 dark:bg-blue-500/10 p-4 shadow-sm">
+                  <p className="text-sm font-medium text-blue-800 dark:text-blue-400">Entries</p>
+                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-300">{entryCount}</p>
                 </div>
               </div>
 
               <div className="grid gap-6 lg:grid-cols-[1.4fr_0.8fr]">
-                <div className="app-card p-4">
+                <div className="surface-panel p-4 shadow-sm">
                   <div className="mb-4 flex items-center justify-between gap-3">
   <div>
-    <h2 className="text-xl font-semibold text-slate-900">
+    <h2 className="text-xl font-semibold text-[var(--foreground)]">
       Report table
     </h2>
-    <p className="mt-1 text-sm text-slate-500">
+    <p className="mt-1 text-sm text-[var(--muted)]">
       {selectedParty ? `Showing only ${selectedParty}` : "Showing all parties"}
     </p>
   </div>
 
-  <span className="text-sm text-slate-500">
+  <span className="text-sm text-[var(--muted)]">
     {filteredEntries.length} rows
   </span>
 </div>
 
                   {filteredEntries.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-                      <p className="text-sm font-medium text-slate-800">
+                    <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--card-muted)] p-6 text-center">
+                      <p className="text-sm font-medium text-[var(--foreground)]">
                         No entries found for this month.
                       </p>
-                      <p className="mt-1 text-sm text-slate-600">
+                      <p className="mt-1 text-sm text-[var(--muted)]">
                         Pick another month or add ledger entries from the uploads page.
                       </p>
                     </div>
@@ -643,60 +643,60 @@ async function handleExportPartyLedgerExcel() {
                     <div className="overflow-x-auto">
                       <table className="min-w-full border-collapse">
                         <thead>
-                          <tr className="border-b border-slate-200 text-left">
-                            <th className="px-3 py-3 text-sm font-semibold text-slate-700">
+                          <tr className="border-b border-[var(--border)] text-left">
+                            <th className="px-3 py-3 text-sm font-semibold text-[var(--muted)]">
                               Date
                             </th>
-                            <th className="px-3 py-3 text-sm font-semibold text-slate-700">
+                            <th className="px-3 py-3 text-sm font-semibold text-[var(--muted)]">
                               Type
                             </th>
-                            <th className="px-3 py-3 text-sm font-semibold text-slate-700">
+                            <th className="px-3 py-3 text-sm font-semibold text-[var(--muted)]">
                               Amount
                             </th>
-                            <th className="px-3 py-3 text-sm font-semibold text-slate-700">
+                            <th className="px-3 py-3 text-sm font-semibold text-[var(--muted)]">
                               Party
                             </th>
-                            <th className="px-3 py-3 text-sm font-semibold text-slate-700">
+                            <th className="px-3 py-3 text-sm font-semibold text-[var(--muted)]">
                               Project / Site
                             </th>
-                            <th className="px-3 py-3 text-sm font-semibold text-slate-700">
+                            <th className="px-3 py-3 text-sm font-semibold text-[var(--muted)]">
                               Category
                             </th>
-                            <th className="px-3 py-3 text-sm font-semibold text-slate-700">
+                            <th className="px-3 py-3 text-sm font-semibold text-[var(--muted)]">
                               Note
                             </th>
                           </tr>
                         </thead>
                         <tbody>
                           {filteredEntries.map((entry) => (
-                            <tr key={entry.id} className="border-b border-slate-100">
-                              <td className="px-3 py-3 text-sm text-slate-700">
+                            <tr key={entry.id} className="border-b border-[var(--border)] bg-[var(--card)] hover:bg-[var(--card-muted)] transition-colors">
+                              <td className="px-3 py-3 text-sm text-[var(--foreground)]">
                                 {entry.entry_date}
                               </td>
                               <td className="px-3 py-3 text-sm">
                                 <span
                                   className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                                     entry.entry_type === "income"
-                                      ? "bg-green-100 text-green-800"
-                                      : "bg-red-100 text-red-800"
+                                      ? "bg-green-100 text-green-800 dark:bg-green-500/10 dark:text-green-400"
+                                      : "bg-red-100 text-red-800 dark:bg-red-500/10 dark:text-red-400"
                                   }`}
                                 >
                                   {entry.entry_type === "income" ? "Income" : "Expense"}
                                 </span>
                               </td>
-                              <td className="px-3 py-3 text-sm font-medium text-slate-900">
+                              <td className="px-3 py-3 text-sm font-medium text-[var(--foreground)]">
                                 ₹{Number(entry.amount).toFixed(2)}
                               </td>
-                              <td className="px-3 py-3 text-sm text-slate-700">
+                              <td className="px-3 py-3 text-sm text-[var(--foreground)]">
                                 {entry.party_name || "-"}
                               </td>
-                              <td className="px-3 py-3 text-sm font-medium text-slate-600">
+                              <td className="px-3 py-3 text-sm font-medium text-[var(--muted)]">
                                 {entry.project_name || "-"}
                               </td>
-                              <td className="px-3 py-3 text-sm text-slate-700">
+                              <td className="px-3 py-3 text-sm text-[var(--muted)]">
                                 {entry.category || "-"}
                               </td>
-                              <td className="max-w-[220px] px-3 py-3 text-sm text-slate-600">
+                              <td className="max-w-[220px] px-3 py-3 text-sm text-[var(--muted)]">
                                 {entry.note || "-"}
                               </td>
                             </tr>
@@ -708,9 +708,9 @@ async function handleExportPartyLedgerExcel() {
                 </div>
 
                 <div className="space-y-6">
-  <div className="app-card p-4">
+  <div className="surface-panel p-4 shadow-sm">
     <div className="mb-4 flex items-center justify-between">
-      <h2 className="text-xl font-semibold text-slate-900">
+      <h2 className="text-xl font-semibold text-[var(--foreground)]">
         Party summary
       </h2>
     </div>
@@ -721,19 +721,19 @@ async function handleExportPartyLedgerExcel() {
     value={partySearch}
     onChange={(e) => setPartySearch(e.target.value)}
     placeholder="Search party name..."  
-    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+    className="w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] text-[var(--input-text)] px-3 py-2 text-sm outline-none transition focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)]"
   />
 </div>
 
 {selectedParty ? (
-  <div className="mb-4 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-    <p className="text-sm text-slate-700">
-      Showing entries for: <span className="font-semibold text-slate-900">{selectedParty}</span>
+  <div className="mb-4 flex items-center justify-between rounded-xl border border-[var(--primary)]/30 bg-teal-50 dark:bg-teal-500/10 px-3 py-2">
+    <p className="text-sm text-[var(--foreground)]">
+      Showing entries for: <span className="font-semibold">{selectedParty}</span>
     </p>
     <button
       type="button"
       onClick={() => setSelectedParty("")}
-      className="text-xs font-medium text-slate-600 hover:text-slate-900"
+      className="text-xs font-medium text-[var(--muted)] hover:text-[var(--foreground)]"
     >
       Clear
     </button>
@@ -741,8 +741,8 @@ async function handleExportPartyLedgerExcel() {
 ) : null}
 
     {partySummary.length === 0 ? (
-      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-        <p className="text-sm font-medium text-slate-800">
+      <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--card-muted)] p-6 text-center">
+        <p className="text-sm font-medium text-[var(--foreground)]">
           No party totals yet.
         </p>
       </div>
@@ -759,28 +759,28 @@ async function handleExportPartyLedgerExcel() {
   }
   className={`w-full rounded-xl border p-3 text-left transition ${
     selectedParty.toLowerCase() === item.party.toLowerCase()
-      ? "border-slate-900 bg-slate-100 ring-1 ring-slate-300"
-      : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-slate-100"
+      ? "border-[var(--primary)] bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/50"
+      : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--border)] hover:bg-[var(--card-muted)]"
   }`}
 >
   <div className="flex items-start justify-between gap-3">
     <div>
-      <p className="text-sm font-semibold text-slate-900">
+      <p className="text-sm font-semibold text-[var(--foreground)]">
         {item.party}
       </p>
-      <p className="mt-1 text-xs text-slate-500">
+      <p className="mt-1 text-xs text-[var(--muted)]">
         {item.count} entr{item.count === 1 ? "y" : "ies"}
       </p>
     </div>
 
     <div className="text-right text-xs">
-      <p className="text-green-700">
+      <p className="text-green-700 dark:text-green-400">
         In: ₹{item.income.toFixed(2)}
       </p>
-      <p className="text-red-700">
+      <p className="text-red-700 dark:text-red-400">
         Out: ₹{item.expense.toFixed(2)}
       </p>
-      <p className="mt-1 font-semibold text-slate-900">
+      <p className="mt-1 font-semibold text-[var(--foreground)]">
         Net: ₹{item.net.toFixed(2)}
       </p>
     </div>
@@ -791,16 +791,16 @@ async function handleExportPartyLedgerExcel() {
     )}
   </div>
 
-  <div className="app-card p-4">
+  <div className="surface-panel p-4 shadow-sm">
     <div className="mb-4 flex items-center justify-between">
-      <h2 className="text-xl font-semibold text-slate-900">
+      <h2 className="text-xl font-semibold text-[var(--foreground)]">
         Category summary
       </h2>
     </div>
 
     {categorySummary.length === 0 ? (
-      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-        <p className="text-sm font-medium text-slate-800">
+      <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--card-muted)] p-6 text-center">
+        <p className="text-sm font-medium text-[var(--foreground)]">
           No category totals yet.
         </p>
       </div>
@@ -813,15 +813,15 @@ async function handleExportPartyLedgerExcel() {
             onClick={() => setSelectedCategory((prev) => prev.toLowerCase() === item.category.toLowerCase() ? "" : item.category)}
             className={`w-full rounded-xl border p-3 transition ${
               selectedCategory.toLowerCase() === item.category.toLowerCase()
-                ? "border-slate-900 bg-slate-100 ring-1 ring-slate-300"
-                : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-slate-100"
+                ? "border-[var(--primary)] bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/50"
+                : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--border)] hover:bg-[var(--card-muted)]"
             }`}
           >
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-slate-800">
+              <p className="text-sm font-medium text-[var(--foreground)]">
                 {item.category}
               </p>
-              <p className="text-sm font-semibold text-slate-900">
+              <p className="text-sm font-semibold text-[var(--foreground)]">
                 ₹{item.total.toFixed(2)}
               </p>
             </div>

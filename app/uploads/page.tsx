@@ -202,22 +202,22 @@ export default function UploadsPage() {
     setFiles(prev => prev.map(f => f.id === id ? { ...f, status: "pending", errorMessage: undefined } : f));
   };
 
-  const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-3 text-slate-900 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200";
-  const cardClass = "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm";
+  const inputClass = "w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] text-[var(--input-text)] px-3 py-3 placeholder:text-[var(--input-placeholder)] focus:border-[var(--primary)] focus:outline-none focus:ring-2 focus:ring-[var(--border)]";
+  const cardClass = "surface-panel p-4 shadow-sm";
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900 p-4 md:p-8">
+    <main className="p-4 md:p-8">
       <div className="max-w-2xl mx-auto space-y-6">
 
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Upload Proof</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Photo, screenshot, invoice, or handwritten note</p>
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">Upload Proof</h1>
+            <p className="text-sm text-[var(--muted)] mt-0.5">Photo, screenshot, invoice, or handwritten note</p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-500">{userEmail}</span>
-            <button type="button" onClick={handleLogout} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-100">
+            <span className="text-xs text-[var(--muted)]">{userEmail}</span>
+            <button type="button" onClick={handleLogout} className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors">
               Logout
             </button>
           </div>
@@ -227,8 +227,8 @@ export default function UploadsPage() {
         <section className={cardClass}>
           <form onSubmit={handleSubmit} className="space-y-5">
             <div 
-              className={`rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${
-                isDragging ? "border-teal-500 bg-teal-50" : "border-slate-300 bg-slate-50 hover:bg-slate-100"
+              className={`rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] ${
+                isDragging ? "border-[var(--primary)] dark:bg-teal-500/10 bg-teal-50" : "border-[var(--border)] bg-[var(--card-muted)] hover:bg-[var(--card-elevated)]"
               }`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -239,9 +239,9 @@ export default function UploadsPage() {
               tabIndex={0}
               aria-label="Upload file area"
             >
-              <p className="text-base font-semibold text-slate-900 mb-1">Drag and drop your pictures here, or click to browse</p>
-              <p className="text-xs text-slate-500 mb-2">JPG, PNG, PDF, or any image format</p>
-              <p className="text-xs font-medium text-teal-600 bg-teal-50 inline-block px-2 py-1 rounded mb-4">Tip: You can select or drag multiple files at once</p>
+              <p className="text-base font-semibold text-[var(--foreground)] mb-1">Drag and drop your pictures here, or click to browse</p>
+              <p className="text-xs text-[var(--muted)] mb-2">JPG, PNG, PDF, or any image format</p>
+              <p className="text-xs font-medium text-[var(--primary)] dark:text-teal-400 bg-teal-50 dark:bg-teal-500/10 inline-block px-2 py-1 rounded mb-4">Tip: You can select or drag multiple files at once</p>
               <input
                 type="file"
                 multiple
@@ -261,23 +261,23 @@ export default function UploadsPage() {
               {files.length > 0 && (
                 <div className="mt-4 flex flex-col gap-2 items-center max-h-60 overflow-y-auto w-full px-2" onClick={(e) => e.stopPropagation()}>
                   {files.map((f) => (
-                    <div key={f.id} className={`flex items-center justify-between gap-3 text-sm bg-white px-3 py-2 rounded-lg border shadow-sm w-full transition-colors ${
-                      f.status === "error" ? "border-red-300 bg-red-50" :
-                      f.status === "success" ? "border-teal-300 bg-teal-50" :
-                      f.status === "uploading" ? "border-blue-300 bg-blue-50" :
-                      "border-slate-200"
+                    <div key={f.id} className={`flex items-center justify-between gap-3 text-sm bg-[var(--card)] px-3 py-2 rounded-lg border shadow-sm w-full transition-colors ${
+                      f.status === "error" ? "border-red-300 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10" :
+                      f.status === "success" ? "border-teal-300 dark:border-teal-500/30 bg-teal-50 dark:bg-teal-500/10" :
+                      f.status === "uploading" ? "border-blue-300 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10" :
+                      "border-[var(--border)]"
                     }`}>
                       <div className="flex flex-col text-left overflow-hidden w-full">
                         <div className="flex justify-between items-center w-full mb-0.5">
-                          <span className="font-medium truncate text-slate-800" title={f.file.name}>{f.file.name}</span>
-                          <span className="text-[10px] font-semibold text-slate-500 whitespace-nowrap ml-2">{formatSize(f.file.size)}</span>
+                          <span className="font-medium truncate text-[var(--foreground)]" title={f.file.name}>{f.file.name}</span>
+                          <span className="text-[10px] font-semibold text-[var(--muted)] whitespace-nowrap ml-2">{formatSize(f.file.size)}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                            f.status === "error" ? "text-red-600" :
-                            f.status === "success" ? "text-teal-600" :
-                            f.status === "uploading" ? "text-blue-600" :
-                            "text-slate-500"
+                            f.status === "error" ? "text-red-600 dark:text-red-400" :
+                            f.status === "success" ? "text-teal-600 dark:text-teal-400" :
+                            f.status === "uploading" ? "text-blue-600 dark:text-blue-400" :
+                            "text-[var(--muted)]"
                           }`}>
                             {f.status} {f.status === "error" && f.errorMessage ? `- ${f.errorMessage}` : ""}
                           </span>
@@ -285,12 +285,12 @@ export default function UploadsPage() {
                       </div>
                       <div className="flex items-center shrink-0">
                         {f.status === "error" && (
-                          <button type="button" onClick={(e) => retryFile(f.id, e)} className="text-xs font-semibold text-slate-600 hover:text-slate-900 px-2 py-1 bg-white border border-slate-200 hover:bg-slate-50 rounded mr-2 shadow-sm">
+                          <button type="button" onClick={(e) => retryFile(f.id, e)} className="text-xs font-semibold text-[var(--foreground)] hover:text-[var(--primary)] px-2 py-1 bg-[var(--card-elevated)] border border-[var(--border)] hover:bg-[var(--card-muted)] rounded mr-2 shadow-sm transition-colors">
                             Retry
                           </button>
                         )}
                         {f.status !== "uploading" && f.status !== "success" && (
-                          <button type="button" onClick={(e) => removeFile(f.id, e)} className="text-slate-400 hover:text-red-500 font-bold px-2 py-1 bg-white border border-slate-200 hover:bg-red-50 rounded shadow-sm">✕</button>
+                          <button type="button" onClick={(e) => removeFile(f.id, e)} className="text-[var(--muted)] hover:text-red-500 dark:hover:text-red-400 font-bold px-2 py-1 bg-[var(--card-elevated)] border border-[var(--border)] hover:bg-red-50 dark:hover:bg-red-500/10 rounded shadow-sm transition-colors">✕</button>
                         )}
                       </div>
                     </div>
@@ -300,7 +300,7 @@ export default function UploadsPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-800 mb-2">Add a note (optional)</label>
+              <label className="block text-sm font-medium text-[var(--foreground)] mb-2">Add a note (optional)</label>
               <textarea
                 className={`${inputClass} min-h-[100px]`}
                 placeholder="Example: Payment to Rakesh for labour week 3"
@@ -311,14 +311,14 @@ export default function UploadsPage() {
 
             <button
               type="submit"
-              className="w-full rounded-lg bg-teal-700 px-4 py-3 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60 transition-colors"
+              className="w-full btn-theme-accent py-3 px-4 rounded-lg disabled:opacity-60 transition-colors"
               disabled={status === "uploading" || files.length === 0}
             >
               {status === "uploading" ? "Uploading..." : "Upload proof →"}
             </button>
 
             {message && (
-              <p className={`text-sm font-medium ${status === "error" ? "text-red-700" : "text-slate-800"}`}>
+              <p className={`text-sm font-medium ${status === "error" ? "text-red-700 dark:text-red-400" : "text-[var(--foreground)]"}`}>
                 {message}
               </p>
             )}
@@ -327,9 +327,9 @@ export default function UploadsPage() {
 
         {/* Action hint */}
         <div className="text-center">
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-[var(--muted)]">
             Want to add a manual entry instead?{" "}
-            <a href="/ledger" className="text-slate-600 underline hover:text-slate-900">Go to Ledger</a>
+            <a href="/ledger" className="text-[var(--foreground)] underline hover:text-[var(--primary)] transition-colors">Go to Ledger</a>
           </p>
         </div>
 

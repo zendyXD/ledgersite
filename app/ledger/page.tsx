@@ -401,27 +401,27 @@ export default function LedgerPage() {
   function selectAllVisible() { setSelectedEntryIds(new Set(sortedEntries.map(e => e.id))); }
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900 p-4 md:p-8">
+    <main className="p-4 md:p-8">
       <div className="max-w-5xl mx-auto space-y-6">
         
         {/* Top Header Block */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Main Ledger</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Final construction accounts and proof drafts</p>
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">Main Ledger</h1>
+            <p className="text-sm text-[var(--muted)] mt-0.5">Final construction accounts and proof drafts</p>
           </div>
           <div className="flex gap-2">
-            <Link href="/inbox" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            <Link href="/inbox" className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors">
               ← View Proof Inbox
             </Link>
-            <Link href="/uploads" className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800">
+            <Link href="/uploads" className="btn-theme-accent">
               + Upload New Proof
             </Link>
           </div>
         </div>
 
         {message && (
-          <p className={`text-sm font-medium px-4 py-2 rounded-lg ${status === "error" ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>
+          <p className={`text-sm font-medium px-4 py-2 rounded-lg ${status === "error" ? "bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-500/20" : "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20"}`}>
             {message}
           </p>
         )}
@@ -434,59 +434,59 @@ export default function LedgerPage() {
           
           return (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
-              <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 shadow-sm flex flex-col justify-center items-center text-center">
-                <span className="text-3xl font-bold text-orange-700">{missingCount}</span>
-                <span className="text-xs font-bold text-orange-800 uppercase tracking-widest mt-1">Missing Fields</span>
+              <div className="rounded-xl border border-orange-200 bg-orange-50 dark:border-orange-500/20 dark:bg-orange-500/10 p-4 shadow-sm flex flex-col justify-center items-center text-center">
+                <span className="text-3xl font-bold text-orange-700 dark:text-orange-400">{missingCount}</span>
+                <span className="text-xs font-bold text-orange-800 dark:text-orange-500 uppercase tracking-widest mt-1">Missing Fields</span>
               </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm flex flex-col justify-center items-center text-center">
-                <span className="text-3xl font-bold text-amber-700">{reviewCount}</span>
-                <span className="text-xs font-bold text-amber-800 uppercase tracking-widest mt-1">Needs Review</span>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-orange-500/20 dark:bg-orange-500/10 p-4 shadow-sm flex flex-col justify-center items-center text-center">
+                <span className="text-3xl font-bold text-amber-700 dark:text-orange-400">{reviewCount}</span>
+                <span className="text-xs font-bold text-amber-800 dark:text-orange-500 uppercase tracking-widest mt-1">Needs Review</span>
               </div>
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm flex flex-col justify-center items-center text-center">
-                <span className="text-3xl font-bold text-emerald-700">{readyCount}</span>
-                <span className="text-xs font-bold text-emerald-800 uppercase tracking-widest mt-1">Ready to Finalise</span>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-500/10 p-4 shadow-sm flex flex-col justify-center items-center text-center">
+                <span className="text-3xl font-bold text-emerald-700 dark:text-emerald-400">{readyCount}</span>
+                <span className="text-xs font-bold text-emerald-800 dark:text-emerald-500 uppercase tracking-widest mt-1">Ready to Finalise</span>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm flex flex-col justify-center items-center text-center">
-                <span className="text-3xl font-bold text-slate-700">{noProofCount}</span>
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-widest mt-1">No Proof</span>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 dark:border-[var(--border)] dark:bg-[var(--card-muted)] p-4 shadow-sm flex flex-col justify-center items-center text-center">
+                <span className="text-3xl font-bold text-slate-700 dark:text-[var(--muted)]">{noProofCount}</span>
+                <span className="text-xs font-bold text-slate-800 dark:text-[var(--foreground)] uppercase tracking-widest mt-1">No Proof</span>
               </div>
             </div>
           );
         })()}
 
         {/* Filter Toolbar Card */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between">
+        <div className="surface-panel p-4 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-sm text-slate-600 font-medium whitespace-nowrap">{sortedEntries.length} entries</span>
-              <button type="button" onClick={selectAllVisible} className="text-xs font-medium text-slate-600 hover:text-slate-900 underline">Select all</button>
+              <span className="text-sm text-[var(--muted)] font-medium whitespace-nowrap">{sortedEntries.length} entries</span>
+              <button type="button" onClick={selectAllVisible} className="text-xs font-medium text-[var(--muted)] hover:text-[var(--foreground)] underline transition-colors">Select all</button>
               {selectedEntryIds.size > 0 && (
-                <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 overflow-x-auto max-w-[calc(100vw-40px)]">
-                  <span className="text-xs font-medium text-slate-700 whitespace-nowrap">{selectedEntryIds.size} selected</span>
-                  <div className="h-4 w-px bg-slate-300 mx-1 shrink-0"></div>
-                  <button type="button" onClick={handleBulkMarkReviewed} disabled={bulkMarkLoading} className="text-xs font-medium text-white bg-slate-800 hover:bg-slate-700 rounded-lg px-2 py-1 disabled:opacity-50 whitespace-nowrap shrink-0">
+                <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 overflow-x-auto max-w-[calc(100vw-40px)]">
+                  <span className="text-xs font-medium text-[var(--foreground)] whitespace-nowrap">{selectedEntryIds.size} selected</span>
+                  <div className="h-4 w-px bg-[var(--border)] mx-1 shrink-0"></div>
+                  <button type="button" onClick={handleBulkMarkReviewed} disabled={bulkMarkLoading} className="text-xs font-medium text-[var(--foreground)] bg-[var(--card-elevated)] border border-[var(--border)] hover:bg-[var(--card-muted)] transition-colors rounded-lg px-2 py-1 disabled:opacity-50 whitespace-nowrap shrink-0">
                     {bulkMarkLoading ? "Marking..." : "Mark reviewed"}
                   </button>
                   <div className="flex items-center gap-1 shrink-0">
-                    <input type="text" placeholder="Category" value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} className="w-24 text-xs rounded border border-slate-300 px-2 py-1 focus:outline-none focus:border-slate-500" />
-                    <button type="button" onClick={() => handleBulkCategorise()} disabled={bulkMarkLoading || !bulkCategory.trim()} className="text-xs font-medium text-white bg-indigo-700 hover:bg-indigo-600 rounded-lg px-2 py-1 disabled:opacity-50">
+                    <input type="text" placeholder="Category" value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} className="w-24 text-xs rounded-lg border border-[var(--border)] bg-[var(--input-bg)] text-[var(--input-text)] px-2 py-1 focus:outline-none focus:border-[var(--primary)]" />
+                    <button type="button" onClick={() => handleBulkCategorise()} disabled={bulkMarkLoading || !bulkCategory.trim()} className="text-xs font-medium text-white bg-[var(--primary)] hover:bg-[var(--primary-hover)] transition-colors rounded-lg px-2 py-1 disabled:opacity-50">
                       Set
                     </button>
                   </div>
-                  <button type="button" onClick={clearSelection} className="text-xs font-medium text-slate-500 hover:text-slate-900 underline ml-1 shrink-0">Clear</button>
+                  <button type="button" onClick={clearSelection} className="text-xs font-medium text-[var(--muted)] hover:text-[var(--foreground)] underline transition-colors ml-1 shrink-0">Clear</button>
                 </div>
               )}
             </div>
             <div className="flex flex-wrap gap-2">
               {[
-                { label: "Exceptions", value: "exceptions" },
+                { label: "Exceptions", value: "exceptions", color: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20" },
                 { label: "All", value: "all" },
                 { label: "Needs Review", value: "needs_review" },
                 { label: "Reviewed Drafts", value: "reviewed" },
                 { label: "Confirmed", value: "confirmed" },
               ].map(f => (
                 <button key={f.value} type="button" onClick={() => setFilterStatus(f.value as any)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${filterStatus === f.value ? (f.value === "exceptions" ? "bg-red-700 text-white border-red-700" : "bg-slate-900 text-white border-slate-900") : (f.value === "exceptions" ? "bg-red-50 text-red-700 border-red-200" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100")}`}>
+                  className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${filterStatus === f.value ? (f.value === "exceptions" ? "bg-red-700 text-white border-red-700 dark:bg-red-600 dark:border-red-600" : "bg-slate-900 dark:bg-slate-700 text-white border-slate-900 dark:border-slate-700") : (f.color || "bg-[var(--card)] text-[var(--foreground)] border-[var(--border)] hover:bg-[var(--card-muted)]")}`}>
                   {f.label}
                 </button>
               ))}
@@ -496,7 +496,7 @@ export default function LedgerPage() {
             <input
               type="text"
               placeholder="Search party, category, or notes..."
-              className="w-full sm:w-64 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200"
+              className="w-full sm:w-64 rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--input-text)] placeholder:text-[var(--input-placeholder)] focus:outline-none focus:ring-2 focus:ring-[var(--border)]"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -513,21 +513,21 @@ export default function LedgerPage() {
 
           return (
             <div className="grid grid-cols-4 gap-4">
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm text-center">
-                <div className="text-2xl font-bold text-slate-900">{filteredEntries.length}</div>
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mt-1">Total Entries</div>
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm text-center">
+                <div className="text-2xl font-bold text-[var(--foreground)]">{filteredEntries.length}</div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--muted)] mt-1">Total Entries</div>
               </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm text-center">
-                <div className="text-2xl font-bold text-amber-700">{draftCount}</div>
-                <div className="text-[11px] font-bold uppercase tracking-wider text-amber-600 mt-1">Drafts</div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-orange-500/20 dark:bg-orange-500/10 p-4 shadow-sm text-center">
+                <div className="text-2xl font-bold text-amber-700 dark:text-orange-400">{draftCount}</div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-amber-600 dark:text-orange-500 mt-1">Drafts</div>
               </div>
-              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 shadow-sm text-center">
-                <div className="text-2xl font-bold text-blue-700">{confirmedCount}</div>
-                <div className="text-[11px] font-bold uppercase tracking-wider text-blue-600 mt-1">Confirmed</div>
+              <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-500/20 dark:bg-blue-500/10 p-4 shadow-sm text-center">
+                <div className="text-2xl font-bold text-blue-700 dark:text-blue-400">{confirmedCount}</div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-500 mt-1">Confirmed</div>
               </div>
-              <div className={`rounded-xl border p-4 shadow-sm text-center transition-colors ${attentionCount > 0 ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white"}`}>
-                <div className={`text-2xl font-bold ${attentionCount > 0 ? "text-rose-700" : "text-slate-900"}`}>{attentionCount}</div>
-                <div className={`text-[11px] font-bold uppercase tracking-wider mt-1 ${attentionCount > 0 ? "text-rose-600" : "text-slate-500"}`}>Needs Attention</div>
+              <div className={`rounded-xl border p-4 shadow-sm text-center transition-colors ${attentionCount > 0 ? "border-rose-200 bg-rose-50 dark:border-rose-500/20 dark:bg-rose-500/10" : "border-[var(--border)] bg-[var(--card)]"}`}>
+                <div className={`text-2xl font-bold ${attentionCount > 0 ? "text-rose-700 dark:text-rose-400" : "text-[var(--foreground)]"}`}>{attentionCount}</div>
+                <div className={`text-[11px] font-bold uppercase tracking-wider mt-1 ${attentionCount > 0 ? "text-rose-600 dark:text-rose-500" : "text-[var(--muted)]"}`}>Needs Attention</div>
               </div>
             </div>
           );
@@ -535,19 +535,19 @@ export default function LedgerPage() {
 
         {/* Ledger Transaction Rows Grid Layout */}
         {loading ? (
-          <p className="text-sm text-slate-600">Loading ledger files...</p>
+          <p className="text-sm text-[var(--muted)]">Loading ledger files...</p>
         ) : filteredEntries.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500 text-sm">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 text-center text-[var(--muted)] text-sm">
             No entries found matching your search.
           </div>
         ) : (
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <tr className="bg-[var(--card-muted)] border-b border-[var(--border)] text-xs font-bold uppercase tracking-wider text-[var(--muted)]">
                     <th className="p-4 w-10">
-                      <input type="checkbox" onChange={selectAllVisible} checked={selectedEntryIds.size > 0 && selectedEntryIds.size === sortedEntries.length} className="h-4 w-4 rounded border-slate-300 accent-slate-800" />
+                      <input type="checkbox" onChange={selectAllVisible} checked={selectedEntryIds.size > 0 && selectedEntryIds.size === sortedEntries.length} className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]" />
                     </th>
                     <th className="p-4">Date</th>
                     <th className="p-4">Party</th>
@@ -557,12 +557,12 @@ export default function LedgerPage() {
                     <th className="p-4 text-right">Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-[var(--border)]">
                   {sortedEntries.map((entry) => {
                     const isExpense = entry.entry_type === "expense";
                     const isDraft = !entry.is_finalised;
                     const isEditing = editingEntryId === entry.id;
-                    const inputClass = "w-full rounded border border-slate-300 px-2 py-1 text-xs bg-white text-slate-900 focus:outline-none focus:border-slate-500";
+                    const inputClass = "w-full rounded-md border border-[var(--border)] px-2 py-1 text-xs bg-[var(--input-bg)] text-[var(--input-text)] focus:outline-none focus:border-[var(--primary)] shadow-sm";
                     
                     const missingFields: string[] = [];
                     if (!entry.party_name) missingFields.push("Party");
@@ -574,12 +574,12 @@ export default function LedgerPage() {
 
                     return (
                       <Fragment key={entry.id}>
-                        <tr id={`ledger-entry-${entry.id}`} className={`transition-all duration-1000 ${isEditing ? "bg-slate-50" : highlightEntryId === entry.id ? "bg-teal-50 border-teal-400" : isDraft ? "hover:bg-slate-50/80 bg-white" : "bg-slate-100/50 hover:bg-slate-100"}`}>
+                        <tr id={`ledger-entry-${entry.id}`} className={`transition-all duration-300 ${isEditing ? "bg-gray-50 dark:bg-gray-800 border-y-2 border-y-blue-500" : highlightEntryId === entry.id ? "!bg-blue-50 dark:!bg-blue-900/20 border-l-4 !border-l-blue-600" : isDraft ? "hover:bg-gray-50 dark:hover:bg-gray-800/50" : "bg-gray-50/50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
                           <td className="p-4">
-                            <input type="checkbox" checked={selectedEntryIds.has(entry.id)} onChange={() => toggleSelectEntry(entry.id)} className="h-4 w-4 rounded border-slate-300 accent-slate-800" />
+                            <input type="checkbox" checked={selectedEntryIds.has(entry.id)} onChange={() => toggleSelectEntry(entry.id)} className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500" />
                           </td>
                           {/* 1. DATE COLUMN */}
-                          <td className="p-4 font-medium text-slate-600 whitespace-nowrap">
+                          <td className="p-4 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
                             {isEditing ? (
                               <input type="date" className={inputClass} value={editDate} onChange={(e) => setEditDate(e.target.value)} />
                             ) : entry.entry_date ? (
@@ -594,7 +594,7 @@ export default function LedgerPage() {
                             {isEditing ? (
                               <input type="text" className={inputClass} value={editParty} onChange={(e) => setEditParty(e.target.value)} />
                             ) : (
-                              <span className="font-bold text-slate-900">{entry.party_name || "—"}</span>
+                              <span className="font-bold text-[var(--foreground)]">{entry.party_name || "—"}</span>
                             )}
                           </td>
 
@@ -607,7 +607,7 @@ export default function LedgerPage() {
                               </select>
                             ) : (
                               <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                isExpense ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"
+                                isExpense ? "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 dark:border dark:border-red-500/20" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border dark:border-emerald-500/20"
                               }`}>
                                 {isExpense ? "Expense" : "Income"}
                               </span>
@@ -624,18 +624,18 @@ export default function LedgerPage() {
                               </div>
                             ) : (
                               <>
-                                <div className="text-slate-900 font-medium">{entry.note || "—"}</div>
+                                <div className="text-[var(--foreground)] font-medium">{entry.note || "—"}</div>
                                 {entry.project_name && (
-                                  <div className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-wider">{entry.project_name}</div>
+                                  <div className="text-xs font-bold text-[var(--muted)] mt-1 uppercase tracking-wider">{entry.project_name}</div>
                                 )}
                                 {entry.category && (
-                                  <div className="text-xs text-slate-400 mt-0.5">{entry.category}</div>
+                                  <div className="text-xs text-[var(--muted)] mt-0.5 opacity-80">{entry.category}</div>
                                 )}
                                 
                                 {entry.proofs && (
-                                  <div className="mt-2 flex items-center gap-1.5 rounded-md bg-slate-50 border border-slate-200 px-2 py-1.5 w-fit hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => window.open(`/inbox/${entry.proofs?.id}`, '_blank')}>
-                                    <svg className="w-3 h-3 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                                    <span className="text-[10px] font-semibold text-slate-700 truncate max-w-[120px]">
+                                  <div className="mt-2 flex items-center gap-1.5 rounded-md bg-[var(--card-elevated)] border border-[var(--border)] px-2 py-1.5 w-fit hover:bg-[var(--card-muted)] transition-colors cursor-pointer" onClick={() => window.open(`/inbox/${entry.proofs?.id}`, '_blank')}>
+                                    <svg className="w-3 h-3 text-[var(--muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                    <span className="text-[10px] font-semibold text-[var(--foreground)] truncate max-w-[120px]">
                                       {entry.proofs.original_name}
                                     </span>
                                   </div>
@@ -648,10 +648,10 @@ export default function LedgerPage() {
                           <td className="p-4 whitespace-nowrap text-xs">
                             {isEditing ? (
                               <div className="flex flex-col gap-1.5 w-28">
-                                <button type="button" onClick={() => handleSaveEntry(entry.id, false)} disabled={savingId === entry.id} className="rounded bg-teal-700 px-2 py-1 font-semibold text-white hover:bg-teal-800 disabled:opacity-50">
+                                <button type="button" onClick={() => handleSaveEntry(entry.id, false)} disabled={savingId === entry.id} className="rounded bg-teal-700 dark:bg-teal-600 px-2 py-1 font-semibold text-white hover:bg-teal-800 dark:hover:bg-teal-700 disabled:opacity-50 transition-colors">
                                   Save Entry
                                 </button>
-                                <button type="button" onClick={() => setEditingEntryId(null)} className="text-center rounded border border-slate-300 bg-white px-2 py-1 font-medium text-slate-700 hover:bg-slate-50">
+                                <button type="button" onClick={() => setEditingEntryId(null)} className="text-center rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors">
                                   Cancel
                                 </button>
                               </div>
@@ -660,32 +660,32 @@ export default function LedgerPage() {
                                 <div>
                                   {isDraft ? (
                                     entry.review_status === "reviewed" ? (
-                                      <span className="inline-flex items-center rounded-full bg-teal-50 border border-teal-200 px-2 py-0.5 text-[11px] font-semibold text-teal-700">
+                                      <span className="inline-flex items-center rounded-full bg-teal-50 border border-teal-200 text-teal-700 dark:bg-teal-500/10 dark:border-teal-500/20 dark:text-teal-400 px-2 py-0.5 text-[11px] font-semibold">
                                         Reviewed
                                       </span>
                                     ) : hasMissing ? (
-                                      <span className="inline-flex items-center rounded-full bg-rose-50 border border-rose-200 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                      <span className="inline-flex items-center rounded-full bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-400 px-2 py-0.5 text-[11px] font-semibold">
                                         Needs Review
                                       </span>
                                     ) : (
-                                      <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                      <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200 text-amber-700 dark:bg-orange-500/10 dark:border-orange-500/20 dark:text-orange-400 px-2 py-0.5 text-[11px] font-semibold">
                                         Draft
                                       </span>
                                     )
                                   ) : (
-                                    <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                    <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 text-blue-700 dark:bg-blue-500/10 dark:border-blue-500/20 dark:text-blue-400 px-2 py-0.5 text-[11px] font-semibold">
                                       Confirmed
                                     </span>
                                   )}
                                   {hasMissing && isDraft && (
                                     <div className="mt-1.5 flex flex-col gap-1">
                                       {missingFields.slice(0, 2).map(field => (
-                                        <span key={field} className="inline-block rounded bg-rose-50 border border-rose-100 px-1.5 py-0.5 text-[9px] font-semibold text-rose-700 uppercase tracking-wide w-fit">
+                                        <span key={field} className="inline-block rounded bg-rose-50 border border-rose-100 text-rose-700 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-400 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide w-fit">
                                           Missing {field}
                                         </span>
                                       ))}
                                       {missingFields.length > 2 && (
-                                        <span className="inline-block rounded bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[9px] font-medium text-slate-600 w-fit">
+                                        <span className="inline-block rounded bg-[var(--card-elevated)] border border-[var(--border)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--muted)] w-fit">
                                           +{missingFields.length - 2} more
                                         </span>
                                       )}
@@ -693,7 +693,7 @@ export default function LedgerPage() {
                                   )}
                                   {!entry.proof_id && isDraft && (
                                     <div className="mt-1.5">
-                                      <span className="inline-block rounded bg-orange-50 border border-orange-200 px-1.5 py-0.5 text-[9px] font-semibold text-orange-700 uppercase tracking-wide w-fit">
+                                      <span className="inline-block rounded bg-orange-50 border border-orange-200 text-orange-700 dark:bg-orange-500/10 dark:border-orange-500/20 dark:text-orange-400 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide w-fit">
                                         No Proof
                                       </span>
                                     </div>
@@ -702,7 +702,7 @@ export default function LedgerPage() {
                                     {/* Exceptions List */}
                                     {getLedgerExceptions(entry).map(ex => (
                                       <div key={ex} className="mt-1.5">
-                                        <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 text-red-700 px-2 py-0.5 text-[10px] font-bold">
+                                        <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400 px-2 py-0.5 text-[10px] font-bold">
                                           ⚠️ {ex}
                                         </span>
                                       </div>
@@ -713,19 +713,19 @@ export default function LedgerPage() {
                                 {isDraft ? (
                                   <div className="pt-2 flex flex-col gap-2">
                                     {finaliseConfirmId === entry.id ? (
-                                      <div className="mt-1 rounded bg-amber-50 border border-amber-200 p-2 shadow-sm min-w-[140px]">
-                                        <p className="text-[9px] font-bold text-amber-900 leading-tight mb-2">Lock and confirm entry?</p>
+                                      <div className="mt-1 rounded bg-amber-50 dark:bg-orange-500/10 border border-amber-200 dark:border-orange-500/20 p-2 shadow-sm min-w-[140px]">
+                                        <p className="text-[9px] font-bold text-amber-900 dark:text-orange-400 leading-tight mb-2">Lock and confirm entry?</p>
                                         <div className="flex gap-1.5">
-                                          <button type="button" onClick={() => setFinaliseConfirmId(null)} className="flex-1 rounded bg-white border border-slate-300 text-slate-700 text-[9px] font-bold py-1 hover:bg-slate-50">Cancel</button>
-                                          <button type="button" onClick={() => handleConfirmFinalise(entry.id)} disabled={savingId === entry.id} className="flex-1 rounded bg-amber-600 text-white text-[9px] font-bold py-1 hover:bg-amber-700 disabled:opacity-50">Yes</button>
+                                          <button type="button" onClick={() => setFinaliseConfirmId(null)} className="flex-1 rounded bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] text-[9px] font-bold py-1 hover:bg-[var(--card-muted)] transition-colors">Cancel</button>
+                                          <button type="button" onClick={() => handleConfirmFinalise(entry.id)} disabled={savingId === entry.id} className="flex-1 rounded bg-amber-600 dark:bg-orange-600 text-white text-[9px] font-bold py-1 hover:bg-amber-700 dark:hover:bg-orange-700 disabled:opacity-50 transition-colors">Yes</button>
                                         </div>
                                       </div>
                                     ) : deleteConfirmId === entry.id ? (
-                                      <div className="mt-1 rounded bg-red-50 border border-red-200 p-2 shadow-sm min-w-[140px]">
-                                        <p className="text-[9px] font-bold text-red-900 leading-tight mb-2">Delete draft? {entry.proof_id ? "Proof is kept." : ""}</p>
+                                      <div className="mt-1 rounded bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-2 shadow-sm min-w-[140px]">
+                                        <p className="text-[9px] font-bold text-red-900 dark:text-red-400 leading-tight mb-2">Delete draft? {entry.proof_id ? "Proof is kept." : ""}</p>
                                         <div className="flex gap-1.5">
-                                          <button type="button" onClick={() => setDeleteConfirmId(null)} className="flex-1 rounded bg-white border border-slate-300 text-slate-700 text-[9px] font-bold py-1 hover:bg-slate-50">Cancel</button>
-                                          <button type="button" onClick={() => handleDeleteEntry(entry.id)} disabled={savingId === entry.id} className="flex-1 rounded bg-red-600 text-white text-[9px] font-bold py-1 hover:bg-red-700 disabled:opacity-50">Delete</button>
+                                          <button type="button" onClick={() => setDeleteConfirmId(null)} className="flex-1 rounded bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] text-[9px] font-bold py-1 hover:bg-[var(--card-muted)] transition-colors">Cancel</button>
+                                          <button type="button" onClick={() => handleDeleteEntry(entry.id)} disabled={savingId === entry.id} className="flex-1 rounded bg-red-600 dark:bg-red-700 text-white text-[9px] font-bold py-1 hover:bg-red-700 dark:hover:bg-red-600 disabled:opacity-50 transition-colors">Delete</button>
                                         </div>
                                       </div>
                                     ) : (
@@ -735,7 +735,7 @@ export default function LedgerPage() {
                                             type="button" 
                                             onClick={() => handleMarkDraftReviewed(entry.id)} 
                                             disabled={savingId === entry.id}
-                                            className="rounded bg-slate-900 text-white text-[10px] font-bold px-3 py-1.5 hover:bg-slate-800 transition-colors shadow-sm w-full text-center"
+                                            className="rounded bg-slate-900 dark:bg-slate-700 text-white text-[10px] font-bold px-3 py-1.5 hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors shadow-sm w-full text-center"
                                           >
                                             Mark Reviewed
                                           </button>
@@ -749,11 +749,11 @@ export default function LedgerPage() {
                                             }
                                           }}
                                           disabled={savingId === entry.id || entry.review_status !== "reviewed" || hasMissing}
-                                          className="rounded border border-slate-300 bg-white text-slate-900 text-[10px] font-bold px-3 py-1.5 hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed group relative w-full text-center"
+                                          className="rounded border border-[var(--border)] bg-[var(--card-elevated)] text-[var(--foreground)] text-[10px] font-bold px-3 py-1.5 hover:bg-[var(--card-muted)] transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed group relative w-full text-center"
                                         >
                                           Finalise Entry →
                                           {(entry.review_status !== "reviewed" || hasMissing) && (
-                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block w-36 bg-slate-900 text-white text-[9px] p-2 rounded text-center shadow-lg z-10 whitespace-normal">
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block w-36 bg-slate-900 dark:bg-[var(--card)] dark:border dark:border-[var(--border)] text-white dark:text-[var(--foreground)] text-[9px] p-2 rounded text-center shadow-lg z-10 whitespace-normal">
                                               Must be reviewed with all fields filled
                                             </div>
                                           )}
@@ -763,14 +763,14 @@ export default function LedgerPage() {
                                           <button 
                                             type="button" 
                                             onClick={() => startEditing(entry)} 
-                                            className="text-teal-700 font-semibold underline hover:text-teal-900 text-[10px]"
+                                            className="text-[var(--primary)] font-semibold underline hover:text-[var(--primary-hover)] transition-colors text-[10px]"
                                           >
                                             Edit Fields
                                           </button>
                                           <button 
                                             type="button" 
                                             onClick={() => setDeleteConfirmId(entry.id)} 
-                                            className="text-red-600 font-semibold underline hover:text-red-800 text-[10px]"
+                                            className="text-red-600 dark:text-red-400 font-semibold underline hover:text-red-800 dark:hover:text-red-500 transition-colors text-[10px]"
                                           >
                                             Delete Draft
                                           </button>
@@ -779,7 +779,7 @@ export default function LedgerPage() {
                                               href={`/inbox/${entry.proof_id}`} 
                                               target="_blank" 
                                               rel="noreferrer"
-                                              className="text-indigo-700 font-semibold underline hover:text-indigo-900 text-[10px]"
+                                              className="text-indigo-700 dark:text-indigo-400 font-semibold underline hover:text-indigo-900 dark:hover:text-indigo-300 transition-colors text-[10px]"
                                             >
                                               Open Proof
                                             </a>
@@ -789,7 +789,7 @@ export default function LedgerPage() {
                                         <button 
                                           type="button"
                                           onClick={() => toggleHistory(entry.id)}
-                                          className="text-slate-500 font-semibold underline hover:text-slate-800 text-[10px] w-full text-left"
+                                          className="text-[var(--muted)] font-semibold underline hover:text-[var(--foreground)] transition-colors text-[10px] w-full text-left"
                                         >
                                           {expandedHistoryId === entry.id ? "Hide History" : "View History"}
                                         </button>
@@ -852,7 +852,7 @@ export default function LedgerPage() {
                             {isEditing ? (
                               <input type="number" step="0.01" className={`${inputClass} text-right font-bold`} value={editAmount} onChange={(e) => setEditAmount(e.target.value)} />
                             ) : (
-                              <span className={isExpense ? "text-slate-900" : "text-emerald-700"}>
+                              <span className={isExpense ? "text-[var(--foreground)]" : "text-emerald-700 dark:text-emerald-400"}>
                                 {isExpense ? "-" : "+"}₹{Number(entry.amount).toFixed(2)}
                               </span>
                             )}

@@ -194,22 +194,22 @@ export default function ClosePage() {
   }, [proofs, entries, selectedMonth, monthOptions]);
 
   if (loading) {
-    return <div className="p-8 text-center text-slate-500">Loading monthly close...</div>;
+    return <div className="p-8 text-center text-[var(--muted)]">Loading monthly close...</div>;
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 overflow-y-auto">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4 shrink-0 sticky top-0 z-10">
+    <div className="page-shell flex flex-col h-full overflow-y-auto">
+      <header className="surface-panel flex items-center justify-between border-b border-[var(--border)] px-6 py-4 shrink-0 sticky top-0 z-10">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Monthly Close</h1>
-          <p className="text-sm text-slate-500">Lightweight overview and unresolved exception trends</p>
+          <h1 className="text-xl font-bold text-[var(--foreground)] tracking-tight">Monthly Close</h1>
+          <p className="text-sm text-[var(--muted)]">Lightweight overview and unresolved exception trends</p>
         </div>
         <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-slate-700">Month:</label>
+          <label className="text-sm font-medium text-[var(--foreground)]">Month:</label>
           <select 
             value={selectedMonth} 
             onChange={e => setSelectedMonth(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            className="rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--input-text)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)] focus:border-[var(--primary)]"
           >
             {monthOptions.map(m => (
               <option key={m} value={m}>{m}</option>
@@ -222,36 +222,36 @@ export default function ClosePage() {
         
         {/* Metrics row */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">Proofs Uploaded</p>
-            <p className="mt-2 text-3xl font-bold text-slate-900">{metrics.proofsUploaded}</p>
+          <div className="surface-panel rounded-xl p-5 shadow-sm">
+            <p className="text-sm font-medium text-[var(--muted)]">Proofs Uploaded</p>
+            <p className="mt-2 text-3xl font-bold text-[var(--foreground)]">{metrics.proofsUploaded}</p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">Proofs Reviewed</p>
-            <p className="mt-2 text-3xl font-bold text-slate-900">{metrics.proofsReviewed}</p>
+          <div className="surface-panel rounded-xl p-5 shadow-sm">
+            <p className="text-sm font-medium text-[var(--muted)]">Proofs Reviewed</p>
+            <p className="mt-2 text-3xl font-bold text-[var(--foreground)]">{metrics.proofsReviewed}</p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">Drafts Created</p>
-            <p className="mt-2 text-3xl font-bold text-slate-900">{metrics.draftsCreated}</p>
+          <div className="surface-panel rounded-xl p-5 shadow-sm">
+            <p className="text-sm font-medium text-[var(--muted)]">Drafts Created</p>
+            <p className="mt-2 text-3xl font-bold text-[var(--foreground)]">{metrics.draftsCreated}</p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">Drafts Finalised</p>
-            <p className="mt-2 text-3xl font-bold text-emerald-700">{metrics.draftsFinalised}</p>
+          <div className="surface-panel rounded-xl p-5 shadow-sm">
+            <p className="text-sm font-medium text-[var(--muted)]">Drafts Finalised</p>
+            <p className="mt-2 text-3xl font-bold text-emerald-700 dark:text-emerald-400">{metrics.draftsFinalised}</p>
           </div>
         </section>
 
         {/* Exceptions */}
-        <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="border-b border-slate-200 px-5 py-4 bg-slate-50">
-            <h2 className="text-sm font-bold text-slate-900">Unresolved Exceptions by Item Age</h2>
-            <p className="text-xs text-slate-500 mt-1">Shows currently unresolved issues on items created in this month vs last month.</p>
+        <section className="surface-panel rounded-xl shadow-sm overflow-hidden">
+          <div className="border-b border-[var(--border)] px-5 py-4 bg-[var(--card)]">
+            <h2 className="text-sm font-bold text-[var(--foreground)]">Unresolved Exceptions by Item Age</h2>
+            <p className="text-xs text-[var(--muted)] mt-1">Shows currently unresolved issues on items created in this month vs last month.</p>
           </div>
           <div className="p-0 overflow-x-auto">
             {exceptionTrends.length === 0 ? (
-              <p className="p-5 text-sm text-slate-500 text-center">No unresolved exceptions for this period! 🎉</p>
+              <p className="p-5 text-sm text-[var(--muted)] text-center">No unresolved exceptions for this period! 🎉</p>
             ) : (
               <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+                <thead className="bg-[var(--card)] border-b border-[var(--border)] text-[var(--muted)]">
                   <tr>
                     <th className="px-5 py-3 font-medium">Exception Type</th>
                     <th className="px-5 py-3 font-medium text-right">{selectedMonth}</th>
@@ -259,22 +259,22 @@ export default function ClosePage() {
                     <th className="px-5 py-3 font-medium text-right">Trend</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-[var(--border)]">
                   {exceptionTrends.map(t => {
                     const diff = t.current - t.last;
                     const isWorse = diff > 0;
                     return (
-                      <tr key={t.type} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-5 py-3 font-medium text-slate-700">{t.type}</td>
-                        <td className="px-5 py-3 text-right font-bold text-red-600">{t.current}</td>
-                        <td className="px-5 py-3 text-right text-slate-500">{t.last}</td>
+                      <tr key={t.type} className="hover:bg-[var(--card-muted)] transition-colors">
+                        <td className="px-5 py-3 font-medium text-[var(--foreground)]">{t.type}</td>
+                        <td className="px-5 py-3 text-right font-bold text-red-600 dark:text-red-400">{t.current}</td>
+                        <td className="px-5 py-3 text-right text-[var(--muted)]">{t.last}</td>
                         <td className="px-5 py-3 text-right">
                           {diff === 0 ? (
-                            <span className="text-slate-400">-</span>
+                            <span className="text-slate-400 dark:text-slate-500">-</span>
                           ) : isWorse ? (
-                            <span className="text-red-500 font-medium">+{diff} ↗</span>
+                            <span className="text-red-500 font-medium dark:text-red-400">+{diff} ↗</span>
                           ) : (
-                            <span className="text-emerald-500 font-medium">{diff} ↘</span>
+                            <span className="text-emerald-500 font-medium dark:text-emerald-400">{diff} ↘</span>
                           )}
                         </td>
                       </tr>
@@ -289,28 +289,28 @@ export default function ClosePage() {
         {/* Tables */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
           {/* Top Parties */}
-          <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col h-full">
-            <div className="border-b border-slate-200 px-5 py-4 bg-slate-50 shrink-0">
-              <h2 className="text-sm font-bold text-slate-900">Top Parties (Finalised)</h2>
+          <section className="surface-panel rounded-xl shadow-sm overflow-hidden flex flex-col h-full">
+            <div className="border-b border-[var(--border)] px-5 py-4 bg-[var(--card)] shrink-0">
+              <h2 className="text-sm font-bold text-[var(--foreground)]">Top Parties (Finalised)</h2>
             </div>
             <div className="p-0 overflow-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+                <thead className="bg-[var(--card)] border-b border-[var(--border)] text-[var(--muted)]">
                   <tr>
                     <th className="px-5 py-3 font-medium">Party Name</th>
                     <th className="px-5 py-3 font-medium text-right">Total Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-[var(--border)]">
                   {topParties.map((p, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-5 py-3 font-medium text-slate-700">{p.party}</td>
-                      <td className="px-5 py-3 text-right text-slate-600">Rs. {p.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <tr key={i} className="hover:bg-[var(--card-muted)] transition-colors">
+                      <td className="px-5 py-3 font-medium text-[var(--foreground)]">{p.party}</td>
+                      <td className="px-5 py-3 text-right text-[var(--muted)]">Rs. {p.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                   ))}
                   {topParties.length === 0 && (
                     <tr>
-                      <td colSpan={2} className="px-5 py-4 text-center text-slate-500">No finalised entries this month.</td>
+                      <td colSpan={2} className="px-5 py-4 text-center text-[var(--muted)]">No finalised entries this month.</td>
                     </tr>
                   )}
                 </tbody>
@@ -319,28 +319,28 @@ export default function ClosePage() {
           </section>
 
           {/* Categories */}
-          <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col h-full">
-            <div className="border-b border-slate-200 px-5 py-4 bg-slate-50 shrink-0">
-              <h2 className="text-sm font-bold text-slate-900">Category Summary (Finalised)</h2>
+          <section className="surface-panel rounded-xl shadow-sm overflow-hidden flex flex-col h-full">
+            <div className="border-b border-[var(--border)] px-5 py-4 bg-[var(--card)] shrink-0">
+              <h2 className="text-sm font-bold text-[var(--foreground)]">Category Summary (Finalised)</h2>
             </div>
             <div className="p-0 overflow-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+                <thead className="bg-[var(--card)] border-b border-[var(--border)] text-[var(--muted)]">
                   <tr>
                     <th className="px-5 py-3 font-medium">Category</th>
                     <th className="px-5 py-3 font-medium text-right">Total Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-[var(--border)]">
                   {categorySummary.map((c, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-5 py-3 font-medium text-slate-700">{c.category}</td>
-                      <td className="px-5 py-3 text-right text-slate-600">Rs. {c.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <tr key={i} className="hover:bg-[var(--card-muted)] transition-colors">
+                      <td className="px-5 py-3 font-medium text-[var(--foreground)]">{c.category}</td>
+                      <td className="px-5 py-3 text-right text-[var(--muted)]">Rs. {c.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                   ))}
                   {categorySummary.length === 0 && (
                     <tr>
-                      <td colSpan={2} className="px-5 py-4 text-center text-slate-500">No finalised entries this month.</td>
+                      <td colSpan={2} className="px-5 py-4 text-center text-[var(--muted)]">No finalised entries this month.</td>
                     </tr>
                   )}
                 </tbody>

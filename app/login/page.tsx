@@ -53,11 +53,13 @@ export default function LoginPage() {
     }
   }
 
+  const inputClass = "w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] text-[var(--input-text)] px-3 py-3 placeholder:text-[var(--input-placeholder)] focus:border-[var(--primary)] focus:outline-none focus:ring-2 focus:ring-[var(--border)]";
+
   return (
-    <main className="min-h-screen bg-slate-50 p-4 md:p-8">
-      <div className="max-w-md mx-auto bg-white rounded-2xl shadow p-6">
-        <h1 className="text-2xl font-semibold mb-2">Ledger login</h1>
-        <p className="text-sm text-slate-600 mb-6">
+    <main className="page-shell flex min-h-screen items-center justify-center p-4">
+      <div className="surface-panel w-full max-w-md rounded-2xl shadow p-6">
+        <h1 className="text-2xl font-semibold text-[var(--foreground)] mb-2">Ledger login</h1>
+        <p className="text-sm text-[var(--muted)] mb-6">
           Login or create an account to continue.
         </p>
 
@@ -65,10 +67,10 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => setMode("login")}
-            className={`px-4 py-2 rounded-lg text-sm ${
+            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
               mode === "login"
-                ? "bg-teal-700 text-white"
-                : "bg-slate-100 text-slate-700"
+                ? "btn-theme-accent font-medium"
+                : "bg-[var(--card-elevated)] text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-muted)]"
             }`}
           >
             Login
@@ -76,10 +78,10 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => setMode("signup")}
-            className={`px-4 py-2 rounded-lg text-sm ${
+            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
               mode === "signup"
-                ? "bg-teal-700 text-white"
-                : "bg-slate-100 text-slate-700"
+                ? "btn-theme-accent font-medium"
+                : "bg-[var(--card-elevated)] text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-muted)]"
             }`}
           >
             Sign up
@@ -88,10 +90,10 @@ export default function LoginPage() {
 
         <form onSubmit={handleAuth} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">Email</label>
+            <label className="block text-sm font-medium text-[var(--foreground)] mb-2">Email</label>
             <input
               type="email"
-              className="w-full border rounded-lg p-3"
+              className={inputClass}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
@@ -99,10 +101,10 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">Password</label>
+            <label className="block text-sm font-medium text-[var(--foreground)] mb-2">Password</label>
             <input
               type="password"
-              className="w-full border rounded-lg p-3"
+              className={inputClass}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter password"
@@ -112,7 +114,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-teal-700 px-4 py-3 text-white text-sm"
+            className="w-full btn-theme-accent px-4 py-3 text-sm rounded-lg disabled:opacity-60 transition-colors"
           >
             {loading
               ? "Please wait..."
@@ -123,7 +125,7 @@ export default function LoginPage() {
         </form>
 
         {message && (
-          <p className="mt-4 text-sm text-slate-700">{message}</p>
+          <p className="mt-4 text-sm text-[var(--foreground)]">{message}</p>
         )}
       </div>
     </main>
