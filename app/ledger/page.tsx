@@ -585,7 +585,7 @@ export default function LedgerPage() {
                       <Fragment key={entry.id}>
                         <tr id={`ledger-entry-${entry.id}`} className={`group transition-all duration-300 relative ${isEditing ? "bg-[var(--card-muted)] border-y-2 border-y-[var(--primary)]" : highlightEntryId === entry.id ? "!bg-[var(--primary)]/10 border-l-4 !border-l-[var(--primary)]" : selectedEntryIds.has(entry.id) ? "bg-[var(--primary)]/5 border-l-4 border-l-[var(--primary)]/50" : isDraft ? "bg-[var(--card)] hover:bg-[var(--card-muted)] border-l-4 border-l-transparent cursor-pointer" : "bg-[var(--card)]/50 hover:bg-[var(--card-muted)] border-l-4 border-l-transparent text-[var(--muted)] cursor-pointer"}`} onClick={(e) => {
                           if ((e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'BUTTON' && (e.target as HTMLElement).tagName !== 'SELECT' && !isEditing) {
-                            toggleExpandHistory(entry.id);
+                            toggleHistory(entry.id);
                           }
                         }}>
                           <td className="p-4">
