@@ -394,10 +394,10 @@ export default function InboxPage() {
 
   function getConfidence(proof: Proof): { label: string; color: string } {
     if (proof.processing_status === "reviewed" || (!!proof.extracted_party && proof.extracted_amount != null && !!proof.extracted_date))
-      return { label: "High confidence", color: "bg-emerald-50 border-emerald-200 text-emerald-700" };
+      return { label: "High confidence", color: "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400" };
     if (!!proof.extracted_party && proof.extracted_amount != null)
-      return { label: "Medium confidence", color: "bg-yellow-50 border-yellow-200 text-yellow-700" };
-    return { label: "Low confidence", color: "bg-red-50 border-red-200 text-red-700" };
+      return { label: "Medium confidence", color: "bg-yellow-50 border-yellow-200 text-yellow-700 dark:bg-yellow-500/10 dark:border-yellow-500/20 dark:text-yellow-400" };
+    return { label: "Low confidence", color: "bg-red-50 border-red-200 text-red-700 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-400" };
   }
 
 
@@ -487,43 +487,43 @@ export default function InboxPage() {
   function selectAllVisible() { setSelectedIds(new Set(sortedProofs.map((p) => p.id))); }
 
   const isFiltered = proofSearch.trim() !== "" || readinessFilter !== "all" || sortOrder !== "newest";
-  const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-3 text-slate-900 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200";
-  const cardClass = "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm";
+  const inputClass = "w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-3 text-[var(--input-text)] placeholder:text-[var(--input-placeholder)] focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-[var(--border)]";
+  const cardClass = "surface-panel p-4 shadow-sm";
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900 p-4 md:p-8">
+    <main className="p-4 md:p-8">
       <div className="max-w-5xl mx-auto space-y-6">
 
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Proof Inbox</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Review, extract, and convert proofs to ledger entries</p>
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">Proof Inbox</h1>
+            <p className="text-sm text-[var(--muted)] mt-0.5">Review, extract, and convert proofs to ledger entries</p>
           </div>
-          <a href="/uploads" className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800">
+          <a href="/uploads" className="btn-theme-accent">
             + Upload proof
           </a>
         </div>
 
         {message && (
-          <p className={`text-sm font-medium px-4 py-2 rounded-lg ${status === "error" ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>
+          <p className={`text-sm font-medium px-4 py-2 rounded-lg ${status === "error" ? "bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-500/20" : "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20"}`}>
             {message}
           </p>
         )}
 
         {/* Exception Summary Bar */}
         <div className="grid grid-cols-3 gap-3 md:gap-6">
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm flex flex-col justify-center items-center text-center">
-            <span className="text-3xl font-bold text-red-700">{proofCounts.exceptions_duplicates}</span>
-            <span className="text-xs font-bold text-red-800 uppercase tracking-widest mt-1">Duplicates</span>
+          <div className="rounded-xl border border-red-200 bg-red-50 dark:border-red-500/20 dark:bg-red-500/10 p-4 shadow-sm flex flex-col justify-center items-center text-center">
+            <span className="text-3xl font-bold text-red-700 dark:text-red-400">{proofCounts.exceptions_duplicates}</span>
+            <span className="text-xs font-bold text-red-800 dark:text-red-500 uppercase tracking-widest mt-1">Duplicates</span>
           </div>
-          <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 shadow-sm flex flex-col justify-center items-center text-center">
-            <span className="text-3xl font-bold text-orange-700">{proofCounts.exceptions_missing}</span>
-            <span className="text-xs font-bold text-orange-800 uppercase tracking-widest mt-1">Missing Info</span>
+          <div className="rounded-xl border border-orange-200 bg-orange-50 dark:border-orange-500/20 dark:bg-orange-500/10 p-4 shadow-sm flex flex-col justify-center items-center text-center">
+            <span className="text-3xl font-bold text-orange-700 dark:text-orange-400">{proofCounts.exceptions_missing}</span>
+            <span className="text-xs font-bold text-orange-800 dark:text-orange-500 uppercase tracking-widest mt-1">Missing Info</span>
           </div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm flex flex-col justify-center items-center text-center">
-            <span className="text-3xl font-bold text-amber-700">{proofCounts.exceptions_stalled}</span>
-            <span className="text-xs font-bold text-amber-800 uppercase tracking-widest mt-1">Stalled at Review</span>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-orange-500/20 dark:bg-orange-500/10 p-4 shadow-sm flex flex-col justify-center items-center text-center">
+            <span className="text-3xl font-bold text-amber-700 dark:text-orange-400">{proofCounts.exceptions_stalled}</span>
+            <span className="text-xs font-bold text-amber-800 dark:text-orange-500 uppercase tracking-widest mt-1">Stalled at Review</span>
           </div>
         </div>
 
@@ -531,38 +531,38 @@ export default function InboxPage() {
         <section className={cardClass}>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-sm text-slate-600">{sortedProofs.length} proofs</span>
-              <button type="button" onClick={selectAllVisible} className="text-xs font-medium text-slate-600 hover:text-slate-900 underline">Select all</button>
+              <span className="text-sm text-[var(--muted)]">{sortedProofs.length} proofs</span>
+              <button type="button" onClick={selectAllVisible} className="text-xs font-medium text-[var(--muted)] hover:text-[var(--foreground)] underline transition-colors">Select all</button>
               {selectedIds.size > 0 && (
-                <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5">
-                  <span className="text-xs font-medium text-slate-700">{selectedIds.size} selected</span>
-                  <button type="button" onClick={handleBulkCreateDrafts} disabled={bulkDraftLoading} className="text-xs font-medium text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg px-2 py-1 disabled:opacity-50">
+                <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-1.5">
+                  <span className="text-xs font-medium text-[var(--foreground)]">{selectedIds.size} selected</span>
+                  <button type="button" onClick={handleBulkCreateDrafts} disabled={bulkDraftLoading} className="text-xs font-medium text-white bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-lg px-2 py-1 disabled:opacity-50 transition-colors">
                     {bulkDraftLoading ? "Creating..." : "Create drafts"}
                   </button>
-                  <button type="button" onClick={handleBulkUnlink} disabled={bulkUnlinkLoading} className="text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-2 py-1 disabled:opacity-50">
+                  <button type="button" onClick={handleBulkUnlink} disabled={bulkUnlinkLoading} className="text-xs font-medium text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 border border-red-200 dark:border-red-500/20 rounded-lg px-2 py-1 disabled:opacity-50 transition-colors">
                     {bulkUnlinkLoading ? "Unlinking..." : "Unlink"}
                   </button>
-                  <button type="button" onClick={() => handleBulkReviewStatus("reviewed")} className="text-xs font-medium text-white bg-slate-800 hover:bg-slate-700 rounded-lg px-2 py-1">Mark reviewed</button>
-                  <button type="button" onClick={handleInitiateDelete} className="text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-2 py-1">Delete</button>
-                  <button type="button" onClick={clearSelection} className="text-xs font-medium text-slate-500 hover:text-slate-900 underline">Clear</button>
+                  <button type="button" onClick={() => handleBulkReviewStatus("reviewed")} className="text-xs font-medium text-[var(--foreground)] bg-[var(--card-elevated)] border border-[var(--border)] hover:bg-[var(--card-muted)] rounded-lg px-2 py-1 transition-colors">Mark reviewed</button>
+                  <button type="button" onClick={handleInitiateDelete} className="text-xs font-medium text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 border border-red-200 dark:border-red-500/20 rounded-lg px-2 py-1 transition-colors">Delete</button>
+                  <button type="button" onClick={clearSelection} className="text-xs font-medium text-[var(--muted)] hover:text-[var(--foreground)] underline transition-colors">Clear</button>
                 </div>
               )}
             </div>
             <div className="flex gap-2 flex-wrap">
-              <input type="text" placeholder="Search..." className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 w-48 focus:outline-none focus:ring-2 focus:ring-slate-200" value={proofSearch} onChange={(e) => setProofSearch(e.target.value)} />
-              <select className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
+              <input type="text" placeholder="Search..." className="rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--input-text)] placeholder:text-[var(--input-placeholder)] w-48 focus:outline-none focus:ring-2 focus:ring-[var(--border)]" value={proofSearch} onChange={(e) => setProofSearch(e.target.value)} />
+              <select className="rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--input-text)] focus:outline-none" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
                 <option value="newest">Newest</option>
                 <option value="oldest">Oldest</option>
                 <option value="amount_high">Amount ↓</option>
                 <option value="amount_low">Amount ↑</option>
               </select>
-              {isFiltered && <button type="button" onClick={clearAllControls} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100">Clear all</button>}
+              {isFiltered && <button type="button" onClick={clearAllControls} className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-xs font-medium text-[var(--muted)] hover:bg-[var(--card-muted)] transition-colors">Clear all</button>}
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2 mt-3">
             {[
-              { label: "Exceptions", value: "exceptions", count: proofCounts.exceptions, color: "bg-red-50 text-red-700 border-red-200" },
+              { label: "Exceptions", value: "exceptions", count: proofCounts.exceptions, color: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-400" },
               { label: "All", value: "all", count: proofCounts.all },
               { label: "Unreviewed", value: "unreviewed", count: proofCounts.unreviewed },
               { label: "Reviewed", value: "reviewed", count: proofCounts.reviewed },
@@ -572,7 +572,7 @@ export default function InboxPage() {
               { label: "Linked", value: "linked", count: proofCounts.linked },
             ].map((f) => (
               <button key={f.value} type="button" onClick={() => setReadinessFilter(f.value)}
-                className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${readinessFilter === f.value ? (f.value === "exceptions" ? "bg-red-700 text-white border-red-700" : "bg-slate-900 text-white border-slate-900") : (f.color || "bg-white text-slate-700 border-slate-300 hover:bg-slate-100")}`}>
+                className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${readinessFilter === f.value ? (f.value === "exceptions" ? "bg-red-700 text-white border-red-700 dark:bg-red-600 dark:border-red-600" : "bg-slate-900 dark:bg-slate-700 text-white border-slate-900 dark:border-slate-700") : (f.color || "bg-[var(--card)] text-[var(--foreground)] border-[var(--border)] hover:bg-[var(--card-muted)]")}`}>
                 {f.label} <span className={`ml-1 opacity-70 ${readinessFilter === f.value ? "text-white" : ""}`}>{f.count}</span>
               </button>
             ))}
@@ -581,12 +581,12 @@ export default function InboxPage() {
 
         {/* Proof cards */}
         {loadingProofs ? (
-          <p className="text-sm text-slate-600">Loading proofs...</p>
+          <p className="text-sm text-[var(--muted)]">Loading proofs...</p>
         ) : sortedProofs.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-            <p className="text-sm font-medium text-slate-700">No proofs found</p>
-            <p className="mt-1 text-xs text-slate-500">Try clearing your search or switching filter.</p>
-            {isFiltered && <button type="button" onClick={clearAllControls} className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-100">Clear all</button>}
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 text-center">
+            <p className="text-sm font-medium text-[var(--foreground)]">No proofs found</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">Try clearing your search or switching filter.</p>
+            {isFiltered && <button type="button" onClick={clearAllControls} className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)]">Clear all</button>}
           </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
@@ -608,17 +608,17 @@ export default function InboxPage() {
 
               return (
               <div key={proof.id} id={`proof-card-${proof.id}`}
-                className={`rounded-xl border p-4 transition-all duration-1000 ${highlightProofId === proof.id ? "border-teal-400 bg-teal-50 shadow-md" : selectedIds.has(proof.id) ? "border-slate-400 bg-slate-100" : "border-slate-200 bg-white"}`}>
+                className={`rounded-xl border p-4 transition-all duration-1000 ${highlightProofId === proof.id ? "border-[var(--primary)] bg-teal-50 dark:bg-teal-500/10 shadow-md" : selectedIds.has(proof.id) ? "border-[var(--border)] bg-[var(--card-elevated)]" : "border-[var(--border)] bg-[var(--card)]"}`}>
 
                 {/* Checkbox */}
                 <div className="flex items-center gap-2 mb-2">
-                  <input type="checkbox" checked={selectedIds.has(proof.id)} onChange={() => toggleSelectProof(proof.id)} className="h-4 w-4 rounded border-slate-300 accent-slate-800" />
-                  <span className="text-xs text-slate-400">Select</span>
+                  <input type="checkbox" checked={selectedIds.has(proof.id)} onChange={() => toggleSelectProof(proof.id)} className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]" />
+                  <span className="text-xs text-[var(--muted)]">Select</span>
                 </div>
 
                 {/* Thumbnail */}
                 {proof.preview_url && (
-                  <div className="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                  <div className="mb-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card-muted)]">
                     <img src={proof.preview_url} alt={proof.original_name || "Proof"} className="h-40 w-full object-cover" />
                   </div>
                 )}
@@ -626,30 +626,30 @@ export default function InboxPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-xs font-medium text-slate-500">Proof #{proof.id}</p>
+                      <p className="text-xs font-medium text-[var(--muted)]">Proof #{proof.id}</p>
                       {proof.processing_status === "reviewed" ? (
-                        <span className="inline-flex items-center rounded-full bg-blue-100 border border-blue-300 px-2 py-0.5 text-[10px] font-bold text-blue-800">Reviewed</span>
+                        <span className="inline-flex items-center rounded-full bg-blue-100 border border-blue-300 dark:border-blue-500/20 dark:bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold text-blue-800 dark:text-blue-400">Reviewed</span>
                       ) : proof.processing_status === "linked" ? (
                         (() => {
                           const isFinalised = ledgerEntries.find(e => e.id === proof.linked_entry_id)?.is_finalised;
                           return isFinalised ? (
-                            <span className="inline-flex items-center rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-800">Finalised</span>
+                            <span className="inline-flex items-center rounded-full bg-emerald-100 border border-emerald-300 dark:border-emerald-500/20 dark:bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-400">Finalised</span>
                           ) : (
-                            <span className="inline-flex items-center rounded-full bg-purple-100 border border-purple-300 px-2 py-0.5 text-[10px] font-bold text-purple-800">Draft</span>
+                            <span className="inline-flex items-center rounded-full bg-purple-100 border border-purple-300 dark:border-purple-500/20 dark:bg-purple-500/10 px-2 py-0.5 text-[10px] font-bold text-purple-800 dark:text-purple-400">Draft</span>
                           );
                         })()
                       ) : proof.processing_status === "needs_rework" ? (
-                        <span className="inline-flex items-center rounded-full bg-red-100 border border-red-300 px-2 py-0.5 text-[10px] font-bold text-red-800">Needs Rework</span>
+                        <span className="inline-flex items-center rounded-full bg-red-100 border border-red-300 dark:border-red-500/20 dark:bg-red-500/10 px-2 py-0.5 text-[10px] font-bold text-red-800 dark:text-red-400">Needs Rework</span>
                       ) : proof.processing_status === "drafted" ? (
-                        <span className="inline-flex items-center rounded-full bg-purple-100 border border-purple-300 px-2 py-0.5 text-[10px] font-bold text-purple-800">Drafted</span>
+                        <span className="inline-flex items-center rounded-full bg-purple-100 border border-purple-300 dark:border-purple-500/20 dark:bg-purple-500/10 px-2 py-0.5 text-[10px] font-bold text-purple-800 dark:text-purple-400">Drafted</span>
                       ) : proof.extracted_party && proof.extracted_amount != null ? (
-                        <span className="inline-flex items-center rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-800">Ready</span>
+                        <span className="inline-flex items-center rounded-full bg-emerald-100 border border-emerald-300 dark:border-emerald-500/20 dark:bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-400">Ready</span>
                       ) : (
-                        <span className="inline-flex items-center rounded-full bg-amber-100 border border-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-800">Needs review</span>
+                        <span className="inline-flex items-center rounded-full bg-amber-100 border border-amber-300 dark:border-orange-500/20 dark:bg-orange-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:text-orange-400">Needs review</span>
                       )}
-                      {proof.reviewed_at && <span className="text-[10px] text-slate-500">Reviewed {timeAgo(proof.reviewed_at)}</span>}
+                      {proof.reviewed_at && <span className="text-[10px] text-[var(--muted)]">Reviewed {timeAgo(proof.reviewed_at)}</span>}
                       {duplicates.length > 0 && (
-                        <Link href={`/inbox/${duplicates[0].proof.id}`} title={duplicates[0].reasons.join(", ")} className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold transition-colors ${duplicates[0].score === 'likely' ? 'bg-red-100 border-red-300 text-red-800 hover:bg-red-200' : 'bg-orange-100 border-orange-300 text-orange-800 hover:bg-orange-200'}`}>
+                        <Link href={`/inbox/${duplicates[0].proof.id}`} title={duplicates[0].reasons.join(", ")} className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold transition-colors ${duplicates[0].score === 'likely' ? 'bg-red-100 border-red-300 text-red-800 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-500/20' : 'bg-orange-100 border-orange-300 text-orange-800 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-500/20'}`}>
                           ⚠️ {duplicates[0].score === 'likely' ? 'Likely' : 'Possible'} duplicate of #{duplicates[0].proof.id}
                         </Link>
                       )}
@@ -660,23 +660,23 @@ export default function InboxPage() {
                       
                       {/* Exceptions List */}
                       {getProofExceptions(proof).map(ex => (
-                        <span key={ex} className="inline-flex items-center rounded-full border border-red-200 bg-red-50 text-red-700 px-2 py-0.5 text-[10px] font-bold">
+                        <span key={ex} className="inline-flex items-center rounded-full border border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400 px-2 py-0.5 text-[10px] font-bold">
                           ⚠️ {ex}
                         </span>
                       ))}
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <span className="text-xs text-slate-400">{new Date(proof.created_at).toLocaleString()}</span>
+                    <span className="text-xs text-[var(--muted)]">{new Date(proof.created_at).toLocaleString()}</span>
                     {proof.source === 'whatsapp' && (
-                      <span className="inline-flex items-center rounded-full bg-[#25D366]/10 px-2.5 py-0.5 text-[11px] font-bold text-[#128C7E] border border-[#25D366]/30 shadow-sm">
+                      <span className="inline-flex items-center rounded-full bg-[#25D366]/10 px-2.5 py-0.5 text-[11px] font-bold text-[#128C7E] dark:text-[#25D366] border border-[#25D366]/30 shadow-sm">
                         💬 WhatsApp
                       </span>
                     )}
                   </div>
                 </div>
 
-                {proof.comment && <p className="mt-2 text-sm text-slate-700">{proof.comment}</p>}
+                {proof.comment && <p className="mt-2 text-sm text-[var(--foreground)]">{proof.comment}</p>}
 
                 {/* Extracted fields */}
                 <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -686,29 +686,29 @@ export default function InboxPage() {
                     { label: "Amount", value: proof.extracted_amount != null ? `₹${proof.extracted_amount.toFixed(2)}` : "—" },
                     { label: "Date", value: proof.extracted_date || "—" },
                   ].map((f) => (
-                    <div key={f.label} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{f.label}</p>
-                      <p className="mt-0.5 text-sm font-semibold text-slate-900">{f.value}</p>
+                    <div key={f.label} className="rounded-lg border border-[var(--border)] bg-[var(--card-muted)] px-3 py-2">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">{f.label}</p>
+                      <p className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">{f.value}</p>
                     </div>
                   ))}
                 </div>
 
                 {/* Actions */}
                 <div className="mt-4 flex gap-2 flex-wrap items-center">
-                  <a href={`/inbox/${proof.id}`} className="rounded-lg bg-teal-700 px-4 py-2 text-xs font-bold text-white hover:bg-teal-800">
+                  <a href={`/inbox/${proof.id}`} className="rounded-lg border border-[var(--border)] bg-[var(--card-elevated)] px-4 py-2 text-xs font-bold text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors">
                     Edit Proof
                   </a>
 
                   {proof.processing_status !== "reviewed" && !proof.linked_entry_id && (
                     <button type="button" onClick={() => handleReviewSingle(proof.id)}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-100">
+                      className="rounded-lg border border-[var(--border)] bg-[var(--card-elevated)] px-3 py-2 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors">
                       Mark reviewed
                     </button>
                   )}
 
                   {!proof.linked_entry_id && proof.extracted_party && proof.extracted_amount != null && (
                     <button type="button" onClick={() => handleCreateLedgerDraft(proof.id)} disabled={draftLoadingId === proof.id}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-60">
+                      className="btn-theme-accent px-3 py-2 text-xs disabled:opacity-60 transition-colors">
                       {draftLoadingId === proof.id ? "Creating..." : "Create ledger draft"}
                     </button>
                   )}
@@ -718,19 +718,19 @@ export default function InboxPage() {
                     const isFinalised = linkedEntry?.is_finalised;
                     return isFinalised ? (
                       <>
-                        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-800">
+                        <span className="inline-flex items-center rounded-full border border-emerald-200 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-800 dark:text-emerald-400">
                           Finalised #{proof.linked_entry_id}
                         </span>
-                        <a href={`/ledger?highlight=${proof.linked_entry_id}`} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-100">
+                        <a href={`/ledger?highlight=${proof.linked_entry_id}`} className="rounded-lg border border-[var(--border)] bg-[var(--card-elevated)] px-3 py-2 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors">
                           View ledger
                         </a>
                       </>
                     ) : (
                       <>
-                        <span className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-[11px] font-medium text-purple-800">
+                        <span className="inline-flex items-center rounded-full border border-purple-200 dark:border-purple-500/20 bg-purple-50 dark:bg-purple-500/10 px-3 py-1 text-[11px] font-medium text-purple-800 dark:text-purple-400">
                           Draft #{proof.linked_entry_id}
                         </span>
-                        <a href={`/ledger?highlight=${proof.linked_entry_id}`} className="rounded-lg bg-purple-700 text-white px-4 py-2 text-xs font-bold hover:bg-purple-800 shadow-sm">
+                        <a href={`/ledger?highlight=${proof.linked_entry_id}`} className="btn-theme-accent px-4 py-2 text-xs shadow-sm transition-colors">
                           Review draft
                         </a>
                       </>
@@ -746,18 +746,18 @@ export default function InboxPage() {
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-bold text-slate-900">
+          <div className="w-full max-w-sm rounded-2xl bg-[var(--card)] p-6 shadow-xl border border-[var(--border)]">
+            <h3 className="text-lg font-bold text-[var(--foreground)]">
               {selectedIds.size === 1 ? "Delete this proof from everywhere?" : `Delete ${selectedIds.size} proofs from everywhere?`}
             </h3>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-[var(--muted)]">
               This action removes the proof record and stored file permanently.
             </p>
             <div className="mt-6 flex justify-end gap-3">
-              <button type="button" onClick={() => setShowDeleteConfirm(false)} disabled={deleting} className="rounded-lg px-4 py-2 text-sm font-bold text-slate-700 bg-slate-100 border border-slate-300 hover:bg-slate-200">
+              <button type="button" onClick={() => setShowDeleteConfirm(false)} disabled={deleting} className="rounded-lg px-4 py-2 text-sm font-bold text-[var(--foreground)] bg-[var(--card-elevated)] border border-[var(--border)] hover:bg-[var(--card-muted)] transition-colors">
                 NO, CANCEL
               </button>
-              <button type="button" onClick={handleBulkDelete} disabled={deleting} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60">
+              <button type="button" onClick={handleBulkDelete} disabled={deleting} className="rounded-lg bg-red-600 dark:bg-red-700 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 dark:hover:bg-red-600 disabled:opacity-60 transition-colors">
                 {deleting ? "DELETING..." : "YES, DELETE"}
               </button>
             </div>

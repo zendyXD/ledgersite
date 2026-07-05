@@ -30,7 +30,7 @@ function DashboardSkeleton() {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4" aria-label="Loading dashboard">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="app-card p-4">
+        <div key={i} className="surface-panel p-4">
           <div className="skeleton h-4 w-28" />
           <div className="skeleton mt-3 h-8 w-24" />
           <div className="skeleton mt-3 h-4 w-36" />
@@ -176,28 +176,28 @@ export default function DashboardPage() {
   }, [ledgerEntries]);
 
   return (
-    <main className="page-shell p-4 md:p-8">
+    <main className="p-4 md:p-8">
       <div className="mx-auto max-w-5xl space-y-8">
-        <section className="app-card p-4">
+        <section className="surface-panel p-4">
           <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-slate-900">LedgerSite Dashboard</h1>
-              <p className="text-sm text-slate-600">
+              <h1 className="text-2xl font-semibold text-[var(--foreground)]">LedgerSite Dashboard</h1>
+              <p className="text-sm text-[var(--muted)]">
                 Your bookkeeping workspace is ready.
               </p>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-[var(--muted)]">
                 Logged in as: {userEmail || "Loading..."}
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <Link href="/uploads" className="btn-primary">
+              <Link href="/uploads" className="btn-theme-accent">
                 Upload proof
               </Link>
-              <Link href="/reports" className="btn-secondary">
+              <Link href="/reports" className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors">
                 Reports
               </Link>
-              <button type="button" onClick={handleLogout} className="btn-secondary">
+              <button type="button" onClick={handleLogout} className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors">
                 Logout
               </button>
             </div>
@@ -211,30 +211,30 @@ export default function DashboardPage() {
             <DashboardSkeleton />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <div className="app-card p-4">
-                <p className="text-sm text-slate-500">Today&apos;s expenses</p>
-                <p className="text-2xl font-semibold text-slate-900">
+              <div className="surface-panel p-4">
+                <p className="text-sm text-[var(--muted)]">Today&apos;s expenses</p>
+                <p className="text-2xl font-semibold text-[var(--foreground)]">
                   ₹{todaysExpenses.toFixed(2)}
                 </p>
               </div>
 
-              <div className="app-card p-4">
-                <p className="text-sm text-slate-500">Linked proofs in ledger</p>
-                <p className="text-2xl font-semibold text-slate-900">
+              <div className="surface-panel p-4">
+                <p className="text-sm text-[var(--muted)]">Linked proofs in ledger</p>
+                <p className="text-2xl font-semibold text-[var(--foreground)]">
                   {linkedProofCount}
                 </p>
               </div>
 
-              <div className="app-card p-4">
-                <p className="text-sm text-slate-500">Labour payouts</p>
-                <p className="text-2xl font-semibold text-slate-900">
+              <div className="surface-panel p-4">
+                <p className="text-sm text-[var(--muted)]">Labour payouts</p>
+                <p className="text-2xl font-semibold text-[var(--foreground)]">
                   ₹{labourPayouts.toFixed(2)}
                 </p>
               </div>
 
-              <div className="app-card p-4">
-                <p className="text-sm text-slate-500">This month spend</p>
-                <p className="text-2xl font-semibold text-slate-900">
+              <div className="surface-panel p-4">
+                <p className="text-sm text-[var(--muted)]">This month spend</p>
+                <p className="text-2xl font-semibold text-[var(--foreground)]">
                   ₹{thisMonthSpend.toFixed(2)}
                 </p>
               </div>
@@ -243,37 +243,37 @@ export default function DashboardPage() {
         </section>
 
         <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-green-300 bg-green-50 p-4">
-            <p className="text-sm font-medium text-green-800">This month income</p>
-            <p className="text-2xl font-bold text-green-900">
+          <div className="rounded-xl border border-green-300 bg-green-50 dark:border-emerald-500/20 dark:bg-emerald-500/10 p-4">
+            <p className="text-sm font-medium text-green-800 dark:text-emerald-400">This month income</p>
+            <p className="text-2xl font-bold text-green-900 dark:text-emerald-300">
               ₹{thisMonthIncome.toFixed(2)}
             </p>
           </div>
 
-          <div className="rounded-xl border border-red-300 bg-red-50 p-4">
-            <p className="text-sm font-medium text-red-800">This month expense</p>
-            <p className="text-2xl font-bold text-red-900">
+          <div className="rounded-xl border border-red-300 bg-red-50 dark:border-red-500/20 dark:bg-red-500/10 p-4">
+            <p className="text-sm font-medium text-red-800 dark:text-red-400">This month expense</p>
+            <p className="text-2xl font-bold text-red-900 dark:text-red-300">
               ₹{thisMonthSpend.toFixed(2)}
             </p>
           </div>
 
-          <div className="rounded-xl border border-slate-300 bg-slate-100 p-4">
-            <p className="text-sm font-medium text-slate-700">Net this month</p>
-            <p className="text-2xl font-bold text-slate-900">
+          <div className="surface-panel p-4">
+            <p className="text-sm font-medium text-[var(--muted)]">Net this month</p>
+            <p className="text-2xl font-bold text-[var(--foreground)]">
               ₹{(thisMonthIncome - thisMonthSpend).toFixed(2)}
             </p>
           </div>
         </section>
 
-        <section className="app-card p-4">
+        <section className="surface-panel p-4">
           <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <h2 className="text-xl font-semibold text-slate-900">Recent activity</h2>
-            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+            <h2 className="text-xl font-semibold text-[var(--foreground)]">Recent activity</h2>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--muted)]">
               <span>{ledgerEntries.length} ledger entries</span>
               <span>•</span>
               <span>{proofs.length} proofs</span>
               <span>•</span>
-              <Link href="/reports" className="font-medium text-teal-700 hover:underline">
+              <Link href="/reports" className="font-medium text-[var(--primary)] hover:text-[var(--primary-hover)] transition-colors">
                 Open reports
               </Link>
             </div>
@@ -282,7 +282,7 @@ export default function DashboardPage() {
           {loading ? (
             <div className="space-y-3">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="app-card-muted p-4">
+                <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--card-muted)] p-4">
                   <div className="skeleton h-4 w-40" />
                   <div className="skeleton mt-2 h-4 w-60" />
                   <div className="skeleton mt-2 h-4 w-28" />
@@ -290,41 +290,41 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : recentEntries.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-              <p className="text-sm font-medium text-slate-800">
+            <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--card-muted)] p-6 text-center">
+              <p className="text-sm font-medium text-[var(--foreground)]">
                 No ledger activity yet.
               </p>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className="mt-1 text-sm text-[var(--muted)]">
                 Add a proof and create your first ledger entry from the uploads page.
               </p>
             </div>
           ) : (
             <div className="space-y-3">
               {recentEntries.map((entry) => (
-                <div key={entry.id} className="app-card-muted p-4">
+                <div key={entry.id} className="rounded-xl border border-[var(--border)] bg-[var(--card-muted)] p-4 transition-colors">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span
                         className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                           entry.entry_type === "income"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
+                            ? "bg-green-100 text-green-800 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border dark:border-emerald-500/20"
+                            : "bg-red-100 text-red-800 dark:bg-red-500/10 dark:text-red-400 dark:border dark:border-red-500/20"
                         }`}
                       >
                         {entry.entry_type === "income" ? "Income" : "Expense"}
                       </span>
-                      <span className="font-semibold text-slate-900">
+                      <span className="font-semibold text-[var(--foreground)]">
                         ₹{Number(entry.amount).toFixed(2)}
                       </span>
                     </div>
-                    <span className="text-xs text-slate-500">{entry.entry_date}</span>
+                    <span className="text-xs text-[var(--muted)]">{entry.entry_date}</span>
                   </div>
 
-                  <p className="mt-2 text-sm text-slate-700">
+                  <p className="mt-2 text-sm text-[var(--foreground)]">
                     {entry.party_name || "-"} | {entry.category || "-"}
                   </p>
 
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-[var(--muted)]">
                     {entry.note || "No note"}
                   </p>
                 </div>
