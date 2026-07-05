@@ -5,15 +5,6 @@ import { logActivity } from "@/lib/activity_logger";
 import crypto from "crypto";
 import { Jimp } from "jimp";
 
-function hammingDistance(s1: string, s2: string): number {
-  if (!s1 || !s2 || s1.length !== s2.length) return 999;
-  let d = 0;
-  for (let i = 0; i < s1.length; i++) {
-    if (s1[i] !== s2[i]) d++;
-  }
-  return d;
-}
-
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioFrom = process.env.TWILIO_WHATSAPP_FROM || "whatsapp:+14155238886";
@@ -423,10 +414,7 @@ async function runExtractionAndPreview(fromNumber: string, userId: string, messa
         isExactDuplicate = true;
         break;
       }
-      if (pHash && oldPhash && hammingDistance(pHash, oldPhash) <= 5) {
-        isExactDuplicate = true;
-        break;
-      }
+      // pHash check removed because it falsely flags different receipts as duplicates (due to identical white backgrounds)
     }
 
     if (!isExactDuplicate && finalAmount !== null && finalParty !== null) {
