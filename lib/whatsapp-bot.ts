@@ -355,6 +355,7 @@ async function runExtractionAndPreview(fromNumber: string, userId: string, messa
   let finalExtractedNote = null;
   let finalAmount = null;
   let finalDate = null;
+  let finalUtr = null;
   let finalCategory = "Other";
   let finalType = "expense";
 
@@ -365,6 +366,7 @@ async function runExtractionAndPreview(fromNumber: string, userId: string, messa
     finalExtractedNote = extractionResult.extracted_note;
     finalAmount = extractionResult.extracted_amount;
     finalDate = extractionResult.extracted_date;
+    finalUtr = extractionResult.extracted_utr || null;
     finalCategory = extractionResult.guessed_category || "Other";
     finalType = extractionResult.guessed_type || "expense";
   } catch (err) {
@@ -393,41 +395,19 @@ async function runExtractionAndPreview(fromNumber: string, userId: string, messa
     console.error("Hashing failed", err);
   }
 
-  // Check for duplicates
-  const { data: recentProofs } = await admin
-    .from("proofs")
-    .select("id, extracted_party, extracted_amount, metadata")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(50);
-
   let isExactDuplicate = false;
-  let isLikelyDuplicate = false;
 
-  if (recentProofs) {
-    for (const p of recentProofs) {
-      const pMetadata = p.metadata || {};
-      const oldSha256 = pMetadata.sha256_hash;
-      const oldPhash = pMetadata.phash_binary;
+  if (finalUtr) {
+    const { data: utrMatch } = await admin
+      .from("proofs")
+      .select("id")
+      .eq("user_id", userId)
+      .contains("metadata", { extracted_utr: finalUtr })
+      .limit(1)
+      .maybeSingle();
 
-      if (sha256Hash && oldSha256 === sha256Hash) {
-        isExactDuplicate = true;
-        break;
-      }
-      // pHash check removed because it falsely flags different receipts as duplicates (due to identical white backgrounds)
-    }
-
-    if (!isExactDuplicate && finalAmount !== null && finalParty !== null) {
-      const normFinal = finalParty.toLowerCase().replace(/[^a-z0-9]/g, '');
-      for (const p of recentProofs) {
-        if (p.extracted_amount === finalAmount && p.extracted_party) {
-          const normOld = p.extracted_party.toLowerCase().replace(/[^a-z0-9]/g, '');
-          if (normFinal === normOld && normFinal !== '') {
-            isLikelyDuplicate = true;
-            break;
-          }
-        }
-      }
+    if (utrMatch) {
+      isExactDuplicate = true;
     }
   }
 
@@ -454,7 +434,8 @@ async function runExtractionAndPreview(fromNumber: string, userId: string, messa
       sha256_hash: sha256Hash,
       phash_binary: pHash,
       beneficiary: finalBeneficiary || null,
-      user_note_raw: userNote || null
+      user_note_raw: userNote || null,
+      extracted_utr: finalUtr
     }
   };
   
@@ -469,14 +450,13 @@ async function runExtractionAndPreview(fromNumber: string, userId: string, messa
     .eq("whatsapp_number", fromNumber);
 
   if (isExactDuplicate) {
-    const summary = `This image already exists.\n\n1️⃣ Save anyway\n2️⃣ Delete\n3️⃣ Cancel`;
+    const summary = `This image (UTR: ${finalUtr}) already exists.\n\n1️⃣ Save anyway\n2️⃣ Delete\n3️⃣ Cancel`;
     await sendWhatsAppMessage(fromNumber, summary);
   } else {
     let summary = ``;
-    if (isLikelyDuplicate) {
-      summary += `⚠️ Likely duplicate detected. Same amount and party name.\n\n`;
-    }
-    summary += `🧾 *Extracted Details*\nParty: ${finalParty || "Unknown"}\nAmount: ₹${finalAmount || "0.00"}\nDate: ${finalDate || "Unknown"}\n\n`;
+    summary += `🧾 *Extracted Details*\nParty: ${finalParty || "Unknown"}\nAmount: ₹${finalAmount || "0.00"}\nDate: ${finalDate || "Unknown"}\n`;
+    if (finalUtr) summary += `UTR/Ref: ${finalUtr}\n`;
+    summary += `\n`;
     if (finalBeneficiary) summary += `Beneficiary: ${finalBeneficiary}\n\n`;
     summary += `Reply with *1* to Save or *2* to Cancel.`;
     

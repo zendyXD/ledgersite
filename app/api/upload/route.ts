@@ -55,6 +55,7 @@ export async function POST(request: Request) {
     let finalRawText: string | null = "";
     let finalCategory: string | null = "Other";
     let finalType: string = "expense";
+    let finalUtr: string | null = null;
 
     try {
       const extractionResult = (await extractFromImage(base64, mimeType, comment)) as any;
@@ -65,9 +66,32 @@ export async function POST(request: Request) {
         finalRawText = extractionResult.extracted_text;
         finalCategory = extractionResult.guessed_category;
         finalType = extractionResult.guessed_type;
+        finalUtr = extractionResult.extracted_utr || null;
       }
     } catch (aiErr) {
       console.error("Auto-extraction silent background error:", aiErr);
+    }
+
+    if (finalUtr) {
+      const { data: utrMatch } = await admin
+        .from("proofs")
+        .select("id")
+        .eq("user_id", user.id)
+        .contains("metadata", { extracted_utr: finalUtr })
+        .limit(1)
+        .maybeSingle();
+
+      if (utrMatch) {
+        // We still uploaded the file to storage, but we won't create a proof record.
+        // The orphaned file in storage can be cleaned up by a cron job later.
+        return Response.json(
+          {
+            step: "dedup-check",
+            message: `Duplicate image (UTR: ${finalUtr}) already exists.`,
+          },
+          { status: 409 }
+        );
+      }
     }
 
     // 3. Insert parameters securely, auto-populating category and transaction type fields directly!
@@ -84,7 +108,10 @@ export async function POST(request: Request) {
         extracted_text: finalRawText,
         extracted_category: finalCategory,
         extracted_entry_type: finalType,
-        processing_status: isQueue ? "queue" : "unprocessed"
+        processing_status: isQueue ? "queue" : "unprocessed",
+        metadata: {
+          extracted_utr: finalUtr
+        }
       })
       .select("id")
       .single();

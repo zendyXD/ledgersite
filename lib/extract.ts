@@ -4,6 +4,7 @@ export async function extractFromImage(imageBase64: string, mimeType: string, co
   extracted_note?: string | null;
   extracted_amount: number | null;
   extracted_date: string | null;
+  extracted_utr?: string | null;
   extracted_text: string | null;
   guessed_category: string | null;
   guessed_type: "income" | "expense" | null;
@@ -36,6 +37,7 @@ Return a JSON object with EXACTLY the following fields:
 - extracted_note (string or null): the interpreted meaning of the user note or transaction context.
 - extracted_amount (number or null): the total amount of the transaction.
 - extracted_date (string or null): the date of the transaction in YYYY-MM-DD format.
+- extracted_utr (string or null): the UTR (Unique Transaction Reference), UPI reference number, or transaction ID if clearly visible.
 - extracted_text (string or null): all relevant text found in the image.
 - guessed_category (string or null): a suggested category for this transaction (e.g., Food, Travel, Utilities, Software).
 - guessed_type ("income", "expense", or null): whether this represents an income or an expense.
@@ -90,6 +92,7 @@ Return a JSON object with EXACTLY the following fields:
       extracted_note: parsed.extracted_note ?? null,
       extracted_amount: parsed.extracted_amount ?? null,
       extracted_date: parsed.extracted_date ?? null,
+      extracted_utr: parsed.extracted_utr ?? null,
       extracted_text: parsed.extracted_text ?? null,
       guessed_category: parsed.guessed_category ?? null,
       guessed_type: (parsed.guessed_type === "income" || parsed.guessed_type === "expense") ? parsed.guessed_type : "expense",
