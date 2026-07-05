@@ -1,60 +1,33 @@
 # LedgerSite
 
-LedgerSite is a lightweight bookkeeping web app built for my dad’s construction business. It helps turn payment screenshots into structured ledger data so bookkeeping is faster, cleaner, and less manual.
+AI bookkeeping tool built for my dad's construction business.
+
+He runs a construction contracting business. Every payment — labor, materials, vendors — was being noted by hand. Slow, repetitive, easy to mess up.
+
+So I built LedgerSite.
 
 ## What it does
 
-- Upload payment screenshots and transaction proofs.
-- Use AI to extract key details like party name, amount, date, and transaction ID.
-- Review and edit extracted data before saving.
-- Generate Excel-ready ledger journal entries from the proof data.
-
-## Why I built it
-
-I built LedgerSite because I was manually handling bookkeeping for my dad’s construction business, and the process was slow and repetitive. The goal was to create a simple workflow that reduces manual entry, keeps records organized, and saves time on everyday bookkeeping tasks.
+- Send a payment screenshot on WhatsApp → AI extracts party, amount, date, UTR automatically
+- Add a note like "Rakesh labour week 3" and Gemini understands it
+- Save, Edit, or Split the entry directly from WhatsApp
+- Ledger draft created automatically — no need to open the app
+- Export monthly Excel or party ledger from WhatsApp or web
+- Full web dashboard for reviewing, confirming, and managing entries
 
 ## Tech stack
 
-- Next.js
-- TypeScript
-- Supabase
-- Gemini Vision API
+- Next.js + TypeScript
+- Supabase (database + storage + auth)
+- Gemini 2.5 Flash Vision API
+- Twilio WhatsApp
 - Vercel
 
-## Run locally
+## Live
 
-### 1. Clone the repository
+ledgersite-rho.vercel.app
 
-```bash
-git clone https://github.com/ZendyXD/ledgersite.git
-cd ledgersite
-```
+## Built by
 
-### 2. Install dependencies
-
-```bash
-npm install
-```
-
-### 3. Create `.env.local`
-
-Add a `.env.local` file in the project root with the following keys:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-GEMINI_API_KEY=
-```
-
-### 4. Start the development server
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## Deployment
-
-LedgerSite is deployed on Vercel.
+Shivanshu Yadav — 19, CSE AI/ML, G.Noida
+github.com/zendyXD
