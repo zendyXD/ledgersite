@@ -619,7 +619,7 @@ export default function InboxPage() {
 
               return (
               <div key={proof.id} id={`proof-card-${proof.id}`}
-                className={`rounded-xl border p-4 transition-all duration-1000 ${highlightProofId === proof.id ? "border-[var(--primary)] bg-teal-50 dark:bg-teal-500/10 shadow-md" : selectedIds.has(proof.id) ? "border-[var(--border)] bg-[var(--card-elevated)]" : "border-[var(--border)] bg-[var(--card)]"}`}>
+                className={`rounded-xl border p-4 transition-all duration-1000 ${highlightProofId === proof.id ? "border-[var(--primary)] bg-[var(--primary)]/10 shadow-md" : selectedIds.has(proof.id) ? "border-[var(--border)] bg-[var(--card-elevated)]" : "border-[var(--border)] bg-[var(--card)]"}`}>
 
                 {/* Checkbox */}
                 <div className="flex items-center gap-2 mb-2">

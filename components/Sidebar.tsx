@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, UploadCloud, Inbox, BookOpen, CalendarClock, BarChart3 } from "lucide-react";
+import ThemeToggle from "./ThemeToggle";
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -38,7 +39,7 @@ export default function Sidebar() {
                 href={item.href}
                 className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-300 ${
                   isActive
-                    ? "bg-[var(--card-muted)] text-[var(--foreground)] font-semibold border-l-2 border-[var(--primary)] shadow-[inset_6px_0_12px_-6px_rgba(20,184,166,0.25)] rounded-l-none"
+                    ? "bg-[var(--card-muted)] text-[var(--foreground)] font-semibold border-l-2 border-[var(--primary)] rounded-l-none"
                     : "text-[var(--muted)] font-medium hover:bg-[var(--card-muted)] hover:text-[var(--foreground)] border-l-2 border-transparent rounded-l-none"
                 }`}
               >
@@ -52,8 +53,11 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom */}
-      <div className="mt-auto px-2">
-        <p className="text-[10px] text-[var(--muted)] opacity-70">MVP v1</p>
+      <div className="mt-auto pt-4 flex flex-col gap-2">
+        <ThemeToggle />
+        <div className="px-2 mt-2">
+          <p className="text-[10px] text-[var(--muted)] opacity-70">MVP v1</p>
+        </div>
       </div>
     </aside>
   );

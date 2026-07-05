@@ -2,20 +2,22 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #f1f5f9;
-  --foreground: #0f172a;
-  --muted: #475569;
+  --background: #f7f5f2;
+  --foreground: #1a1a1a;
+  --muted: #666666;
   --card: #ffffff;
-  --card-muted: #f8fafc;
-  --border: #cbd5e1;
+  --card-elevated: #ffffff;
+  --card-muted: #f0eee9;
+  --border: #e5e2db;
   --input-bg: #ffffff;
-  --input-text: #0f172a;
-  --input-placeholder: #94a3b8;
-  --primary: #0f766e;
-  --primary-hover: #115e59;
-  --danger-bg: #fef2f2;
+  --input-text: #1a1a1a;
+  --input-placeholder: #888888;
+  --primary: #1a5c3a;
+  --primary-hover: #124329;
+  --primary-foreground: #ffffff;
+  --danger-bg: #fdf2f2;
   --danger-text: #b91c1c;
-  --success-bg: #f0fdf4;
+  --success-bg: #f1f8f3;
   --success-text: #166534;
 }
 
@@ -70,14 +72,14 @@ button {
 }
 
 .app-card {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   background: var(--card);
   border-radius: 1rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .app-card-muted {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   background: var(--card-muted);
   border-radius: 0.875rem;
 }
@@ -85,48 +87,49 @@ button {
 .app-input {
   width: 100%;
   border-radius: 0.75rem;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: #0f172a;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--input-text);
   padding: 0.75rem 0.875rem;
 }
 
 .app-input::placeholder {
-  color: #94a3b8;
+  color: var(--input-placeholder);
 }
 
 .app-input:focus,
 .app-select:focus,
 .app-textarea:focus {
   outline: none;
-  border-color: #64748b;
-  box-shadow: 0 0 0 2px #e2e8f0;
+  border-color: var(--muted);
+  box-shadow: 0 0 0 2px var(--card-muted);
 }
 
 .app-select {
   width: 100%;
   border-radius: 0.75rem;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: #0f172a;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--input-text);
   padding: 0.75rem 0.875rem;
 }
 
 .app-textarea {
   width: 100%;
   border-radius: 0.75rem;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: #0f172a;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--input-text);
   padding: 0.75rem 0.875rem;
 }
 
 .btn-primary {
   border-radius: 0.75rem;
   background: var(--primary);
-  color: white;
+  color: var(--primary-foreground);
   padding: 0.625rem 1rem;
   font-weight: 600;
+  border: 1px solid transparent;
 }
 
 .btn-primary:hover {
@@ -135,15 +138,15 @@ button {
 
 .btn-secondary {
   border-radius: 0.75rem;
-  border: 1px solid #cbd5e1;
-  background: white;
-  color: #1e293b;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
   padding: 0.625rem 1rem;
   font-weight: 500;
 }
 
 .btn-secondary:hover {
-  background: #f8fafc;
+  background: var(--card-muted);
 }
 
 .btn-danger {
@@ -169,7 +172,7 @@ button {
 
 .skeleton {
   animation: pulse 1.5s ease-in-out infinite;
-  background: #e2e8f0;
+  background: var(--border);
   border-radius: 0.5rem;
 }
 
@@ -185,29 +188,30 @@ button {
 
 html.dark {
   color-scheme: dark;
-  /* Deep charcoal background, not pure black */
-  --background: #0f1117; 
-  /* High contrast white/gray text */
-  --foreground: #f8fafc; 
-  --muted: #94a3b8; 
-  /* Soft panel layering */
-  --card: #181b24; 
-  --card-elevated: #222631; 
-  --card-muted: #1e212b; 
-  /* Subtle borders */
-  --border: #272b36; 
+  /* Deep near-black background */
+  --background: #0a0a0a; 
+  /* Dimmed foreground for hierarchy, letting primary interactions be solid white */
+  --foreground: #d4d4d4; 
+  --muted: #737373; 
+  /* Minimal surfaces */
+  --card: #121212; 
+  --card-elevated: #1a1a1a; 
+  --card-muted: #0f0f0f; 
+  /* Subtle #e8e8e8 border via opacity (15%) to maintain minimal aesthetic */
+  --border: rgba(232, 232, 232, 0.15); 
   /* Inputs */
-  --input-bg: #181b24;
-  --input-text: #f8fafc;
-  --input-placeholder: #64748b;
-  /* Teal/Green finance accent */
-  --primary: #14b8a6; 
-  --primary-hover: #0d9488;
-  /* Status Colors */
-  --danger-bg: #451a1a;
+  --input-bg: #0a0a0a;
+  --input-text: #ffffff;
+  --input-placeholder: #525252;
+  /* Pure white primary accent */
+  --primary: #ffffff; 
+  --primary-hover: #e5e5e5;
+  --primary-foreground: #0a0a0a;
+  /* Status Colors (Subdued for dark mode) */
+  --danger-bg: rgba(185, 28, 28, 0.15);
   --danger-text: #fca5a5;
-  --success-bg: #064e3b;
-  --success-text: #6ee7b7;
+  --success-bg: rgba(22, 101, 52, 0.15);
+  --success-text: #86efac;
 }
 
 /* Dark Theme Migration Utility Classes */

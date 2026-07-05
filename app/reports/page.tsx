@@ -505,7 +505,7 @@ async function handleExportPartyLedgerExcel() {
                     </select>
                   </div>
                   <label className="mb-3 flex items-center gap-2 cursor-pointer text-sm font-medium text-[var(--muted)]">
-                    <input type="checkbox" checked={includeDrafts} onChange={e => setIncludeDrafts(e.target.checked)} className="rounded border-[var(--border)] bg-[var(--input-bg)] text-teal-600 focus:ring-teal-500 h-4 w-4" />
+                    <input type="checkbox" checked={includeDrafts} onChange={e => setIncludeDrafts(e.target.checked)} className="rounded border-[var(--border)] bg-[var(--input-bg)] text-[var(--primary)] focus:ring-[var(--primary)] h-4 w-4" />
                     Include drafts
                   </label>
                 </div>
@@ -542,7 +542,7 @@ async function handleExportPartyLedgerExcel() {
       <button
         type="button"
         onClick={() => setSelectedParty("")}
-        className="inline-flex items-center gap-2 rounded-full border border-[var(--primary)] bg-teal-50 dark:bg-teal-500/10 px-3 py-1.5 text-sm text-[var(--primary)] dark:text-teal-400 transition hover:bg-teal-100 dark:hover:bg-teal-500/20"
+        className="inline-flex items-center gap-2 rounded-full border border-[var(--primary)] bg-[var(--primary)]/10 px-3 py-1.5 text-sm text-[var(--primary)] transition hover:bg-[var(--primary)]/20"
       >
         Party: <span className="font-semibold">{selectedParty}</span>
         <span className="text-[var(--primary)]/70">×</span>
@@ -553,7 +553,7 @@ async function handleExportPartyLedgerExcel() {
       <button
         type="button"
         onClick={() => setSelectedCategory("")}
-        className="inline-flex items-center gap-2 rounded-full border border-[var(--primary)] bg-teal-50 dark:bg-teal-500/10 px-3 py-1.5 text-sm text-[var(--primary)] dark:text-teal-400 transition hover:bg-teal-100 dark:hover:bg-teal-500/20"
+        className="inline-flex items-center gap-2 rounded-full border border-[var(--primary)] bg-[var(--primary)]/10 px-3 py-1.5 text-sm text-[var(--primary)] transition hover:bg-[var(--primary)]/20"
       >
         Category: <span className="font-semibold">{selectedCategory}</span>
         <span className="text-[var(--primary)]/70">×</span>
@@ -564,7 +564,7 @@ async function handleExportPartyLedgerExcel() {
       <button
         type="button"
         onClick={() => setPartySearch("")}
-        className="inline-flex items-center gap-2 rounded-full border border-[var(--primary)] bg-teal-50 dark:bg-teal-500/10 px-3 py-1.5 text-sm text-[var(--primary)] dark:text-teal-400 transition hover:bg-teal-100 dark:hover:bg-teal-500/20"
+        className="inline-flex items-center gap-2 rounded-full border border-[var(--primary)] bg-[var(--primary)]/10 px-3 py-1.5 text-sm text-[var(--primary)] transition hover:bg-[var(--primary)]/20"
       >
         Search: <span className="font-semibold">{partySearch}</span>
         <span className="text-[var(--primary)]/70">×</span>
@@ -726,7 +726,7 @@ async function handleExportPartyLedgerExcel() {
 </div>
 
 {selectedParty ? (
-  <div className="mb-4 flex items-center justify-between rounded-xl border border-[var(--primary)]/30 bg-teal-50 dark:bg-teal-500/10 px-3 py-2">
+  <div className="mb-4 flex items-center justify-between rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/10 px-3 py-2">
     <p className="text-sm text-[var(--foreground)]">
       Showing entries for: <span className="font-semibold">{selectedParty}</span>
     </p>

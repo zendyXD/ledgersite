@@ -664,7 +664,7 @@ export default function LedgerPage() {
                           <td className="p-4 whitespace-nowrap text-xs">
                             {isEditing ? (
                               <div className="flex flex-col gap-1.5 w-28">
-                                <button type="button" onClick={() => handleSaveEntry(entry.id, false)} disabled={savingId === entry.id} className="rounded bg-teal-700 dark:bg-teal-600 px-2 py-1 font-semibold text-white hover:bg-teal-800 dark:hover:bg-teal-700 disabled:opacity-50 transition-colors">
+                                <button type="button" onClick={() => handleSaveEntry(entry.id, false)} disabled={savingId === entry.id} className="rounded bg-[var(--primary)] px-2 py-1 font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:opacity-50 transition-colors">
                                   Save Entry
                                 </button>
                                 <button type="button" onClick={() => setEditingEntryId(null)} className="text-center rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors">
@@ -676,7 +676,7 @@ export default function LedgerPage() {
                                 <div>
                                   {isDraft ? (
                                     entry.review_status === "reviewed" ? (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-200 text-teal-700 dark:bg-teal-500/10 dark:border-teal-500/20 dark:text-teal-400 px-2 py-0.5 text-[11px] font-semibold">
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)]/10 border border-[var(--primary)]/20 text-[var(--primary)] px-2 py-0.5 text-[11px] font-semibold">
                                         <CheckCircle2 className="w-3 h-3" /> Reviewed
                                       </span>
                                     ) : hasMissing ? (

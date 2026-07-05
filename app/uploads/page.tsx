@@ -228,7 +228,7 @@ export default function UploadsPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div 
               className={`rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] ${
-                isDragging ? "border-[var(--primary)] dark:bg-teal-500/10 bg-teal-50" : "border-[var(--border)] bg-[var(--card-muted)] hover:bg-[var(--card-elevated)]"
+                isDragging ? "border-[var(--primary)] bg-[var(--primary)]/10" : "border-[var(--border)] bg-[var(--card-muted)] hover:bg-[var(--card-elevated)]"
               }`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -241,7 +241,7 @@ export default function UploadsPage() {
             >
               <p className="text-base font-semibold text-[var(--foreground)] mb-1">Drag and drop your pictures here, or click to browse</p>
               <p className="text-xs text-[var(--muted)] mb-2">JPG, PNG, PDF, or any image format</p>
-              <p className="text-xs font-medium text-[var(--primary)] dark:text-teal-400 bg-teal-50 dark:bg-teal-500/10 inline-block px-2 py-1 rounded mb-4">Tip: You can select or drag multiple files at once</p>
+              <p className="text-xs font-medium text-[var(--primary)] bg-[var(--primary)]/10 inline-block px-2 py-1 rounded mb-4">Tip: You can select or drag multiple files at once</p>
               <input
                 type="file"
                 multiple
@@ -263,7 +263,7 @@ export default function UploadsPage() {
                   {files.map((f) => (
                     <div key={f.id} className={`flex items-center justify-between gap-3 text-sm bg-[var(--card)] px-3 py-2 rounded-lg border shadow-sm w-full transition-colors ${
                       f.status === "error" ? "border-red-300 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10" :
-                      f.status === "success" ? "border-teal-300 dark:border-teal-500/30 bg-teal-50 dark:bg-teal-500/10" :
+                      f.status === "success" ? "border-[var(--primary)]/30 bg-[var(--primary)]/10" :
                       f.status === "uploading" ? "border-blue-300 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10" :
                       "border-[var(--border)]"
                     }`}>
@@ -275,7 +275,7 @@ export default function UploadsPage() {
                         <div className="flex items-center justify-between">
                           <span className={`text-[10px] font-bold uppercase tracking-wider ${
                             f.status === "error" ? "text-red-600 dark:text-red-400" :
-                            f.status === "success" ? "text-teal-600 dark:text-teal-400" :
+                            f.status === "success" ? "text-[var(--primary)]" :
                             f.status === "uploading" ? "text-blue-600 dark:text-blue-400" :
                             "text-[var(--muted)]"
                           }`}>

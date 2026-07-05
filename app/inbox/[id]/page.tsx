@@ -453,7 +453,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
     return (
       <div className="min-h-screen bg-slate-100 p-8 text-center">
         <p className="text-red-700 font-medium">{message || "Proof document not found."}</p>
-        <Link href="/inbox" className="mt-4 inline-block text-sm text-teal-700 underline">
+        <Link href="/inbox" className="mt-4 inline-block text-sm text-[var(--primary)] underline">
           Return to Proof Inbox
         </Link>
       </div>
@@ -498,7 +498,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-700">Uploaded Document Proof</h3>
               {previewUrl && (
-                <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-teal-700 hover:underline">
+                <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-[var(--primary)] hover:underline">
                   Open full size ↗
                 </a>
               )}
@@ -521,7 +521,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col">
             {/* 1. Status & Alerts Area */}
             <div className={`p-4 border-b ${proof.linked_entry_id ? "bg-blue-50 border-blue-200 text-blue-800 rounded-t-2xl" :
-                proof.processing_status === "reviewed" ? "bg-teal-50 border-teal-200 text-teal-800 rounded-t-2xl" :
+                proof.processing_status === "reviewed" ? "bg-[var(--primary)]/10 border-[var(--primary)]/20 text-[var(--primary)] rounded-t-2xl" :
                   isReady ? "bg-emerald-50 border-emerald-200 text-emerald-800 rounded-t-2xl" : "bg-amber-50 border-amber-200 text-amber-800 rounded-t-2xl"
               }`}>
               <h2 className="text-lg font-bold">
@@ -656,7 +656,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                     <button type="button" onClick={startEditing} className="flex-1 rounded-xl border border-slate-300 bg-white py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition-colors">
                       Edit Extracted Metadata Fields
                     </button>
-                    <button type="button" onClick={handleReExtract} disabled={extracting} className="rounded-xl border border-teal-300 bg-teal-50 px-4 py-2.5 text-xs font-semibold text-teal-800 hover:bg-teal-100 transition-colors disabled:opacity-50">
+                    <button type="button" onClick={handleReExtract} disabled={extracting} className="rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/10 px-4 py-2.5 text-xs font-semibold text-[var(--primary)] hover:bg-[var(--primary)]/20 transition-colors disabled:opacity-50">
                       {extracting ? "Extracting..." : "Re-Extract with AI"}
                     </button>
                   </div>
@@ -710,7 +710,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                     <button type="button" onClick={() => setIsEditing(false)} disabled={saving} className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
                       Cancel
                     </button>
-                    <button type="button" onClick={handleSaveExtracted} disabled={saving} className="rounded-xl bg-teal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50">
+                    <button type="button" onClick={handleSaveExtracted} disabled={saving} className="rounded-xl bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:opacity-50">
                       {saving ? "Saving Changes..." : "Save Fields"}
                     </button>
                   </div>
@@ -791,7 +791,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                             type="checkbox"
                             checked={isSplit}
                             onChange={e => setIsSplit(e.target.checked)}
-                            className="w-5 h-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                            className="w-5 h-5 rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)]"
                           />
                           <div className="flex flex-col">
                             <span className="text-sm font-bold text-slate-800">Mark as Split Expense</span>
@@ -820,7 +820,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                                   <div className="flex-1 space-y-2">
                                     <input
                                       type="text" placeholder="Worker Name"
-                                      className="w-full text-sm rounded border-slate-300 px-2 py-1.5 focus:ring-1 focus:ring-teal-500 outline-none"
+                                      className="w-full text-sm rounded border-[var(--border)] px-2 py-1.5 focus:ring-1 focus:ring-[var(--primary)] outline-none"
                                       value={row.worker} onChange={e => {
                                         const newRows = [...splitRows];
                                         newRows[index].worker = e.target.value;
@@ -830,7 +830,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                                     <div className="flex gap-2">
                                       <input
                                         type="text" placeholder="Role (e.g., Mason)"
-                                        className="w-1/2 text-sm rounded border-slate-300 px-2 py-1.5 focus:ring-1 focus:ring-teal-500 outline-none"
+                                        className="w-1/2 text-sm rounded border-[var(--border)] px-2 py-1.5 focus:ring-1 focus:ring-[var(--primary)] outline-none"
                                         value={row.role} onChange={e => {
                                           const newRows = [...splitRows];
                                           newRows[index].role = e.target.value;
@@ -839,7 +839,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                                       />
                                       <input
                                         type="number" placeholder="Amount"
-                                        className="w-1/2 text-sm rounded border-slate-300 px-2 py-1.5 focus:ring-1 focus:ring-teal-500 outline-none"
+                                        className="w-1/2 text-sm rounded border-[var(--border)] px-2 py-1.5 focus:ring-1 focus:ring-[var(--primary)] outline-none"
                                         value={row.amount || ""} onChange={e => {
                                           const newRows = [...splitRows];
                                           newRows[index].amount = parseFloat(e.target.value) || 0;
@@ -860,7 +860,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                             </div>
                             <button
                               onClick={() => setSplitRows([...splitRows, { id: `row_${Date.now()}`, worker: "", role: "", amount: 0, note: "" }])}
-                              className="text-xs font-semibold text-teal-700 hover:text-teal-800"
+                              className="text-xs font-semibold text-[var(--primary)] hover:opacity-80"
                             >
                               + Add Worker
                             </button>
