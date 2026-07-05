@@ -446,9 +446,9 @@ export default function LedgerPage() {
                 <span className="text-3xl font-bold text-emerald-700 dark:text-emerald-400">{readyCount}</span>
                 <span className="text-xs font-bold text-emerald-800 dark:text-emerald-500 uppercase tracking-widest mt-1">Ready to Finalise</span>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 dark:border-[var(--border)] dark:bg-[var(--card-muted)] p-4 shadow-sm flex flex-col justify-center items-center text-center">
-                <span className="text-3xl font-bold text-slate-700 dark:text-[var(--muted)]">{noProofCount}</span>
-                <span className="text-xs font-bold text-slate-800 dark:text-[var(--foreground)] uppercase tracking-widest mt-1">No Proof</span>
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm flex flex-col justify-center items-center text-center">
+                <span className="text-3xl font-bold text-[var(--muted)]">{noProofCount}</span>
+                <span className="text-xs font-bold text-[var(--foreground)] uppercase tracking-widest mt-1">No Proof</span>
               </div>
             </div>
           );
@@ -486,7 +486,7 @@ export default function LedgerPage() {
                 { label: "Confirmed", value: "confirmed" },
               ].map(f => (
                 <button key={f.value} type="button" onClick={() => setFilterStatus(f.value as any)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${filterStatus === f.value ? (f.value === "exceptions" ? "bg-red-700 text-white border-red-700 dark:bg-red-600 dark:border-red-600" : "bg-slate-900 dark:bg-slate-700 text-white border-slate-900 dark:border-slate-700") : (f.color || "bg-[var(--card)] text-[var(--foreground)] border-[var(--border)] hover:bg-[var(--card-muted)]")}`}>
+                  className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${filterStatus === f.value ? (f.value === "exceptions" ? "bg-red-700 text-white border-red-700 dark:bg-red-600 dark:border-red-600" : "bg-[var(--foreground)] text-[var(--card)] border-[var(--foreground)]") : (f.color || "bg-[var(--card)] text-[var(--foreground)] border-[var(--border)] hover:bg-[var(--card-muted)]")}`}>
                   {f.label}
                 </button>
               ))}
@@ -574,7 +574,7 @@ export default function LedgerPage() {
 
                     return (
                       <Fragment key={entry.id}>
-                        <tr id={`ledger-entry-${entry.id}`} className={`transition-all duration-300 ${isEditing ? "bg-[var(--card-muted)] border-y-2 border-y-[var(--primary)]" : highlightEntryId === entry.id ? "!bg-[var(--primary)]/10 border-l-4 !border-l-[var(--primary)]" : selectedEntryIds.has(entry.id) ? "bg-[var(--primary)]/5 border-l-4 border-l-[var(--primary)]/50" : isDraft ? "bg-[var(--card)] hover:bg-[var(--card-muted)] border-l-4 border-l-transparent" : "bg-[var(--card)]/50 hover:bg-[var(--card-muted)] opacity-80 border-l-4 border-l-transparent"}`}>
+                        <tr id={`ledger-entry-${entry.id}`} className={`transition-all duration-300 ${isEditing ? "bg-[var(--card-muted)] border-y-2 border-y-[var(--primary)]" : highlightEntryId === entry.id ? "!bg-[var(--primary)]/10 border-l-4 !border-l-[var(--primary)]" : selectedEntryIds.has(entry.id) ? "bg-[var(--primary)]/5 border-l-4 border-l-[var(--primary)]/50" : isDraft ? "bg-[var(--card)] hover:bg-[var(--card-muted)] border-l-4 border-l-transparent" : "bg-[var(--card)]/50 hover:bg-[var(--card-muted)] border-l-4 border-l-transparent text-[var(--muted)]"}`}>
                           <td className="p-4">
                             <input type="checkbox" checked={selectedEntryIds.has(entry.id)} onChange={() => toggleSelectEntry(entry.id)} className="h-4 w-4 rounded border-[var(--border)] accent-[var(--primary)]" />
                           </td>
@@ -735,7 +735,7 @@ export default function LedgerPage() {
                                             type="button" 
                                             onClick={() => handleMarkDraftReviewed(entry.id)} 
                                             disabled={savingId === entry.id}
-                                            className="rounded bg-slate-900 dark:bg-slate-700 text-white text-[10px] font-bold px-3 py-1.5 hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors shadow-sm w-full text-center"
+                                            className="rounded bg-[var(--foreground)] text-[var(--card)] text-[10px] font-bold px-3 py-1.5 hover:opacity-90 transition-colors shadow-sm w-full text-center"
                                           >
                                             Mark Reviewed
                                           </button>
@@ -753,7 +753,7 @@ export default function LedgerPage() {
                                         >
                                           Finalise Entry →
                                           {(entry.review_status !== "reviewed" || hasMissing) && (
-                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block w-36 bg-slate-900 dark:bg-[var(--card)] dark:border dark:border-[var(--border)] text-white dark:text-[var(--foreground)] text-[9px] p-2 rounded text-center shadow-lg z-10 whitespace-normal">
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block w-36 bg-[var(--foreground)] text-[var(--card)] dark:bg-[var(--card)] dark:border dark:border-[var(--border)] dark:text-[var(--foreground)] text-[9px] p-2 rounded text-center shadow-lg z-10 whitespace-normal">
                                               Must be reviewed with all fields filled
                                             </div>
                                           )}
@@ -819,7 +819,7 @@ export default function LedgerPage() {
                                 
                                 {/* History Inline Render */}
                                 {expandedHistoryId === entry.id && historyData[entry.id] && (
-                                  <div className="mt-3 bg-slate-50 border border-slate-200 rounded p-2 shadow-inner w-48 text-left">
+                                  <div className="mt-3 bg-[var(--card)] border border-[var(--border)] rounded p-2 shadow-inner w-48 text-left">
                                     <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-2 border-b border-slate-200 pb-1">Activity History</p>
                                     <div className="flex flex-col gap-2">
                                       {historyData[entry.id].length === 0 ? (
