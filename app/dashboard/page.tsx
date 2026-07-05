@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { LayoutDashboard, Receipt, Link as LinkIcon, Users, CreditCard, TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
 
 type Proof = {
   id: number;
