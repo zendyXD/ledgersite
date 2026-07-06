@@ -152,7 +152,39 @@ export async function processWhatsAppMessage(
         
       await sendWhatsAppMessage(fromNumber, "❌ Cancelled. No data was saved.");
     } else {
-      await sendWhatsAppMessage(fromNumber, "Please reply with *1* to Save or *2* / *3* to Cancel/Delete.");
+      // Treat this as a note to revise extracted details
+      await sendTypingIndicator(fromNumber);
+      await sendWhatsAppMessage(fromNumber, "Revising details based on your note... ⏳");
+      
+      try {
+        const payload = session.context_data?.pending_proof_payload;
+        if (payload) {
+          const revised = await reviseExtractedDetails(payload, bodyText);
+          
+          payload.extracted_party = revised.extracted_party ?? payload.extracted_party;
+          payload.extracted_amount = revised.extracted_amount ?? payload.extracted_amount;
+          payload.extracted_date = revised.extracted_date ?? payload.extracted_date;
+          payload.extracted_category = revised.guessed_category ?? payload.extracted_category;
+          payload.extracted_entry_type = revised.guessed_type ?? payload.extracted_entry_type;
+          // Note: we leave UTR alone
+          
+          await admin
+            .from("whatsapp_sessions")
+            .update({ context_data: { pending_proof_payload: payload } })
+            .eq("whatsapp_number", fromNumber);
+            
+          let summary = `🧾 *Revised Details*\nParty: ${payload.extracted_party || "Unknown"}\nAmount: ₹${payload.extracted_amount || "0.00"}\nDate: ${payload.extracted_date || "Unknown"}\n`;
+          if (payload.metadata?.extracted_utr) summary += `UTR/Ref: ${payload.metadata.extracted_utr}\n`;
+          summary += `\nReply with *1* to Save, *2* to Cancel, or type another note to fix again.`;
+          
+          await sendWhatsAppMessage(fromNumber, summary);
+        } else {
+          await sendWhatsAppMessage(fromNumber, "Lost context. Please reply with *1* to Save or *2* to Cancel.");
+        }
+      } catch (err) {
+        console.error("Revision error", err);
+        await sendWhatsAppMessage(fromNumber, "Sorry, I had trouble understanding that. Please reply with *1* to Save, *2* to Cancel, or try your note again.");
+      }
     }
   } else if (state === "AWAITING_NOTE") {
     console.log(`[WhatsApp Bot] Entered branch: AWAITING_NOTE for ${fromNumber}`);
@@ -458,7 +490,7 @@ async function runExtractionAndPreview(fromNumber: string, userId: string, messa
     if (finalUtr) summary += `UTR/Ref: ${finalUtr}\n`;
     summary += `\n`;
     if (finalBeneficiary) summary += `Beneficiary: ${finalBeneficiary}\n\n`;
-    summary += `Reply with *1* to Save or *2* to Cancel.`;
+    summary += `Reply with *1* to Save, *2* to Cancel, or type a note to correct any mistakes.`;
     
     await sendWhatsAppMessage(fromNumber, summary);
   }
