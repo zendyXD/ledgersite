@@ -4,6 +4,23 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+function FilePreview({ file }: { file: File }) {
+  const [url, setUrl] = useState<string>("");
+  useEffect(() => {
+    if (file.type.startsWith("image/")) {
+      const u = URL.createObjectURL(file);
+      setUrl(u);
+      return () => URL.revokeObjectURL(u);
+    }
+  }, [file]);
+  
+  if (url) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt="preview" className="w-12 h-12 object-cover rounded bg-[var(--card-muted)] border border-[var(--border)] shrink-0" />;
+  }
+  return <div className="w-12 h-12 bg-[var(--card-muted)] border border-[var(--border)] rounded flex items-center justify-center text-[10px] font-bold text-[var(--muted)] shrink-0">PDF</div>;
+}
+
 type UploadFile = {
   id: string;
   file: File;
@@ -22,6 +39,12 @@ export default function UploadsPage() {
   const [userEmail, setUserEmail] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Note AI Assist states
+  const [analyzedFields, setAnalyzedFields] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState("");
+  const [showEditPanel, setShowEditPanel] = useState(false);
 
   const MAX_FILE_SIZE_MB = 10;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -117,6 +140,13 @@ export default function UploadsPage() {
       if (isBatch) {
         formData.append("is_queue", "true");
       }
+      if (analyzedFields) {
+        if (analyzedFields.party) formData.append("manual_party", analyzedFields.party);
+        if (analyzedFields.amount) formData.append("manual_amount", analyzedFields.amount);
+        if (analyzedFields.date) formData.append("manual_date", analyzedFields.date);
+        if (analyzedFields.category) formData.append("manual_category", analyzedFields.category);
+        if (analyzedFields.type) formData.append("manual_type", analyzedFields.type);
+      }
       
       try {
         const res = await fetch("/api/upload", { method: "POST", body: formData });
@@ -144,6 +174,7 @@ export default function UploadsPage() {
       setStatus("done");
       setFiles([]);
       setComment("");
+      setAnalyzedFields(null);
       if (filesToUpload.length === 1 && lastId) {
         router.push(`/inbox/${lastId}`);
       } else if (isBatch) {
@@ -153,6 +184,47 @@ export default function UploadsPage() {
       }
     }
   }
+
+  async function handleAnalyzeNote() {
+    if (!comment.trim()) return;
+    setIsAnalyzing(true);
+    setAnalyzeError("");
+    setAnalyzedFields(null);
+    try {
+      const res = await fetch("/api/analyze-note", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: comment })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to analyze note");
+      setAnalyzedFields({
+        party: data.extracted_party || "",
+        amount: data.extracted_amount || "",
+        date: data.extracted_date || "",
+        category: data.guessed_category || "",
+        type: data.guessed_type || ""
+      });
+      setShowEditPanel(true);
+    } catch (err: any) {
+      setAnalyzeError(err.message || "An error occurred");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
+
+  const handleCancel = () => {
+    setFiles([]);
+    setComment("");
+    setAnalyzedFields(null);
+    setShowEditPanel(false);
+    setStatus("idle");
+    setMessage("");
+    setAnalyzeError("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -227,21 +299,18 @@ export default function UploadsPage() {
         <section className={cardClass}>
           <form onSubmit={handleSubmit} className="space-y-5">
             <div 
-              className={`rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] ${
+              className={`rounded-2xl border-2 border-dashed p-6 text-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] ${
                 isDragging ? "border-[var(--primary)] bg-[var(--primary)]/10" : "border-[var(--border)] bg-[var(--card-muted)] hover:bg-[var(--card-elevated)]"
               }`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => { if (files.length === 0) fileInputRef.current?.click(); }}
               onKeyDown={handleKeyDown}
               role="button"
               tabIndex={0}
               aria-label="Upload file area"
             >
-              <p className="text-base font-semibold text-[var(--foreground)] mb-1">Drag and drop your pictures here, or click to browse</p>
-              <p className="text-xs text-[var(--muted)] mb-2">JPG, PNG, PDF, or any image format</p>
-              <p className="text-xs font-medium text-[var(--primary)] bg-[var(--primary)]/10 inline-block px-2 py-1 rounded mb-4">Tip: You can select or drag multiple files at once</p>
               <input
                 type="file"
                 multiple
@@ -258,29 +327,39 @@ export default function UploadsPage() {
                 onClick={(e) => e.stopPropagation()}
                 tabIndex={-1}
               />
-              {files.length > 0 && (
-                <div className="mt-4 flex flex-col gap-2 items-center max-h-60 overflow-y-auto w-full px-2" onClick={(e) => e.stopPropagation()}>
+              
+              {files.length === 0 ? (
+                <div className="py-2">
+                  <p className="text-base font-semibold text-[var(--foreground)] mb-1">Drag and drop your pictures here, or click to browse</p>
+                  <p className="text-xs text-[var(--muted)] mb-2">JPG, PNG, PDF, or any image format</p>
+                  <p className="text-xs font-medium text-[var(--primary)] bg-[var(--primary)]/10 inline-block px-2 py-1 rounded">Tip: You can select or drag multiple files at once</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3 w-full" onClick={(e) => e.stopPropagation()}>
                   {files.map((f) => (
-                    <div key={f.id} className={`flex items-center justify-between gap-3 text-sm bg-[var(--card)] px-3 py-2 rounded-lg border shadow-sm w-full transition-colors ${
+                    <div key={f.id} className={`flex items-center justify-between gap-3 text-sm bg-[var(--card)] p-3 rounded-xl border shadow-sm w-full transition-colors ${
                       f.status === "error" ? "border-red-300 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10" :
                       f.status === "success" ? "border-[var(--primary)]/30 bg-[var(--primary)]/10" :
                       f.status === "uploading" ? "border-blue-300 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10" :
                       "border-[var(--border)]"
                     }`}>
-                      <div className="flex flex-col text-left overflow-hidden w-full">
-                        <div className="flex justify-between items-center w-full mb-0.5">
-                          <span className="font-medium truncate text-[var(--foreground)]" title={f.file.name}>{f.file.name}</span>
-                          <span className="text-[10px] font-semibold text-[var(--muted)] whitespace-nowrap ml-2">{formatSize(f.file.size)}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                            f.status === "error" ? "text-red-600 dark:text-red-400" :
-                            f.status === "success" ? "text-[var(--primary)]" :
-                            f.status === "uploading" ? "text-blue-600 dark:text-blue-400" :
-                            "text-[var(--muted)]"
-                          }`}>
-                            {f.status} {f.status === "error" && f.errorMessage ? `- ${f.errorMessage}` : ""}
-                          </span>
+                      <div className="flex items-center gap-3 overflow-hidden w-full">
+                        <FilePreview file={f.file} />
+                        <div className="flex flex-col text-left overflow-hidden w-full">
+                          <div className="flex justify-between items-center w-full mb-0.5">
+                            <span className="font-medium truncate text-[var(--foreground)]" title={f.file.name}>{f.file.name}</span>
+                            <span className="text-[10px] font-semibold text-[var(--muted)] whitespace-nowrap ml-2">{formatSize(f.file.size)}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                              f.status === "error" ? "text-red-600 dark:text-red-400" :
+                              f.status === "success" ? "text-[var(--primary)]" :
+                              f.status === "uploading" ? "text-blue-600 dark:text-blue-400" :
+                              "text-[var(--muted)]"
+                            }`}>
+                              {f.status} {f.status === "error" && f.errorMessage ? `- ${f.errorMessage}` : ""}
+                            </span>
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center shrink-0">
@@ -295,6 +374,11 @@ export default function UploadsPage() {
                       </div>
                     </div>
                   ))}
+                  <div className="mt-1 text-center">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="text-sm text-[var(--primary)] font-medium hover:underline">
+                      + Add more files
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -307,15 +391,95 @@ export default function UploadsPage() {
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
               />
+              <div className="mt-2 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={handleAnalyzeNote}
+                  disabled={!comment.trim() || isAnalyzing}
+                  className="text-xs font-semibold text-[var(--primary)] disabled:opacity-50 hover:underline"
+                >
+                  {isAnalyzing ? "Analyzing..." : "✨ Extract fields from note"}
+                </button>
+                {analyzeError && <span className="text-xs text-red-500">{analyzeError}</span>}
+              </div>
+
+              {showEditPanel && analyzedFields && (
+                <div className="mt-4 p-4 rounded-xl border border-[var(--primary)] bg-[var(--primary)]/5 space-y-3">
+                  <h4 className="text-sm font-bold text-[var(--primary)]">Reviewed Fields</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-[var(--muted)]">Party</label>
+                      <input 
+                        className={inputClass} 
+                        value={analyzedFields.party} 
+                        onChange={e => setAnalyzedFields({...analyzedFields, party: e.target.value})} 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-[var(--muted)]">Amount</label>
+                      <input 
+                        className={inputClass} 
+                        value={analyzedFields.amount} 
+                        onChange={e => setAnalyzedFields({...analyzedFields, amount: e.target.value})} 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-[var(--muted)]">Date (YYYY-MM-DD)</label>
+                      <input 
+                        className={inputClass} 
+                        value={analyzedFields.date} 
+                        onChange={e => setAnalyzedFields({...analyzedFields, date: e.target.value})} 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-[var(--muted)]">Category</label>
+                      <input 
+                        className={inputClass} 
+                        value={analyzedFields.category} 
+                        onChange={e => setAnalyzedFields({...analyzedFields, category: e.target.value})} 
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <button
-              type="submit"
-              className="w-full btn-theme-accent py-3 px-4 rounded-lg disabled:opacity-60 transition-colors"
-              disabled={status === "uploading" || files.length === 0}
-            >
-              {status === "uploading" ? "Uploading..." : "Upload proof →"}
-            </button>
+            {files.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--card-muted)] transition-colors text-[var(--foreground)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!analyzedFields) setAnalyzedFields({ party: "", amount: "", date: "", category: "", type: "" });
+                    setShowEditPanel(!showEditPanel);
+                  }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${showEditPanel ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]' : 'border-[var(--border)] bg-[var(--card)] hover:bg-[var(--card-muted)] text-[var(--foreground)]'}`}
+                >
+                  Edit
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 btn-theme-accent py-2 px-4 rounded-lg disabled:opacity-60 transition-colors text-sm font-semibold whitespace-nowrap"
+                  disabled={status === "uploading"}
+                >
+                  {status === "uploading" ? "Uploading..." : "Save / Upload"}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="submit"
+                className="w-full btn-theme-accent py-3 px-4 rounded-lg disabled:opacity-60 transition-colors"
+                disabled={true}
+              >
+                Upload proof →
+              </button>
+            )}>
 
             {message && (
               <p className={`text-sm font-medium ${status === "error" ? "text-red-700 dark:text-red-400" : "text-[var(--foreground)]"}`}>

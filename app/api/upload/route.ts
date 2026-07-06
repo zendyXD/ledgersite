@@ -18,6 +18,13 @@ export async function POST(request: Request) {
     const comment = formData.get("comment") as string | null;
     const isQueue = formData.get("is_queue") === "true";
 
+    // Read manual overrides from note analysis if available
+    const manualParty = formData.get("manual_party") as string | null;
+    const manualAmount = formData.get("manual_amount") as string | null;
+    const manualDate = formData.get("manual_date") as string | null;
+    const manualCategory = formData.get("manual_category") as string | null;
+    const manualType = formData.get("manual_type") as string | null;
+
     if (!file) {
       return Response.json({ message: "No file provided" }, { status: 400 });
     }
@@ -71,6 +78,13 @@ export async function POST(request: Request) {
     } catch (aiErr) {
       console.error("Auto-extraction silent background error:", aiErr);
     }
+
+    // Merge manual overrides from the UI, taking precedence over OCR
+    if (manualParty) finalParty = manualParty;
+    if (manualAmount && !isNaN(parseFloat(manualAmount))) finalAmount = parseFloat(manualAmount);
+    if (manualDate) finalDate = manualDate;
+    if (manualCategory) finalCategory = manualCategory;
+    if (manualType) finalType = manualType;
 
     if (finalUtr) {
       const { data: utrMatch } = await admin

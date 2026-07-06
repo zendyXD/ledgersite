@@ -256,7 +256,77 @@ Return a JSON object with EXACTLY the following format:
     return {
       splits: parsed.splits || []
     };
-  } catch (err) {
+    } catch (err) {
     throw new Error("Failed to parse Gemini JSON output during split: " + (err instanceof Error ? err.message : String(err)));
+  }
+}
+
+export async function analyzeNoteText(note: string): Promise<{
+  extracted_party: string | null;
+  extracted_amount: number | null;
+  extracted_date: string | null;
+  guessed_category: string | null;
+  guessed_type: "income" | "expense" | null;
+  extraction_confidence: Record<string, string>;
+}> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not set in the environment variables.");
+  }
+
+  const prompt = `You are a bookkeeping AI assistant. 
+Extract structured transaction fields purely from the provided user note.
+If a field is not explicitly mentioned or clearly implied, return null for it.
+
+User Note:
+"${note}"
+
+Return a JSON object with EXACTLY the following fields:
+- extracted_party (string or null): the person or business paid or received from.
+- extracted_amount (number or null): the total amount of the transaction.
+- extracted_date (string or null): the date of the transaction in YYYY-MM-DD format (if mentioned).
+- guessed_category (string or null): a suggested category for this transaction (e.g., Food, Travel, Utilities, Software).
+- guessed_type ("income", "expense", or null): whether this represents an income or an expense.
+- extraction_confidence (object): key-value pairs of string to string indicating your confidence for each extracted field (e.g., "party": "high", "amount": "medium").`;
+
+  const requestBody = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseMimeType: "application/json"
+    }
+  };
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error during note analysis: ${response.status} ${errorText}`);
+  }
+
+  const result = await response.json();
+  let textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!textResponse) {
+    throw new Error("Gemini returned an empty or invalid response during note analysis.");
+  }
+
+  textResponse = textResponse.replace(/^\s*```json\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+
+  try {
+    const parsed = JSON.parse(textResponse);
+    return {
+      extracted_party: parsed.extracted_party ?? null,
+      extracted_amount: parsed.extracted_amount ?? null,
+      extracted_date: parsed.extracted_date ?? null,
+      guessed_category: parsed.guessed_category ?? null,
+      guessed_type: (parsed.guessed_type === "income" || parsed.guessed_type === "expense") ? parsed.guessed_type : "expense",
+      extraction_confidence: parsed.extraction_confidence ?? {}
+    };
+  } catch (err) {
+    throw new Error("Failed to parse Gemini JSON output during note analysis: " + (err instanceof Error ? err.message : String(err)));
   }
 }
