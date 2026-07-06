@@ -443,16 +443,16 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-100 p-8 flex items-center justify-center">
-        <p className="text-slate-600 font-medium">Loading proof file details...</p>
+      <div className="page-shell min-h-screen p-8 flex items-center justify-center">
+        <p className="text-[var(--muted)] font-medium">Loading proof file details...</p>
       </div>
     );
   }
 
   if (!proof) {
     return (
-      <div className="min-h-screen bg-slate-100 p-8 text-center">
-        <p className="text-red-700 font-medium">{message || "Proof document not found."}</p>
+      <div className="page-shell min-h-screen p-8 text-center">
+        <p className="text-red-700 dark:text-red-400 font-medium">{message || "Proof document not found."}</p>
         <Link href="/inbox" className="mt-4 inline-block text-sm text-[var(--primary)] underline">
           Return to Proof Inbox
         </Link>
@@ -463,29 +463,29 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
   const isReady = !!proof.extracted_party && proof.extracted_amount != null && !!proof.extracted_date;
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900 p-4 md:p-8">
+    <main className="page-shell min-h-screen text-[var(--foreground)] p-4 md:p-8">
       <div className="max-w-5xl mx-auto space-y-6">
 
         {/* Top Breadcrumb Navigation */}
         <div className="flex items-center justify-between">
           <div>
-            <Link href="/inbox" className="text-xs font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-800 transition-colors">
+            <Link href="/inbox" className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">
               ← Back to Proof Inbox
             </Link>
             <div className="flex items-center gap-3 mt-1">
-              <h1 className="text-2xl font-bold text-slate-900">{isQueueMode ? "Review Queue" : `Review Proof #${proof.id}`}</h1>
+              <h1 className="text-2xl font-bold text-[var(--foreground)]">{isQueueMode ? "Review Queue" : `Review Proof #${proof.id}`}</h1>
               {isQueueMode && queueCount && (
-                <span className="inline-flex items-center rounded-full bg-emerald-100 border border-emerald-300 px-3 py-1 text-xs font-bold text-emerald-800">
+                <span className="inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-300 dark:border-emerald-500/20 px-3 py-1 text-xs font-bold text-emerald-800 dark:text-emerald-400">
                   {queueCount} items left
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-500 mt-1">Uploaded {new Date(proof.created_at).toLocaleString()}</p>
+            <p className="text-xs text-[var(--muted)] mt-1">Uploaded {new Date(proof.created_at).toLocaleString()}</p>
           </div>
         </div>
 
         {message && (
-          <div className={`text-sm font-medium px-4 py-3 rounded-xl border ${status === "error" ? "bg-red-50 border-red-200 text-red-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}>
+          <div className={`text-sm font-medium px-4 py-3 rounded-xl border ${status === "error" ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400" : "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400"}`}>
             {message}
           </div>
         )}
@@ -494,9 +494,9 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
           {/* Column A: Document File View Attachment */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-700">Uploaded Document Proof</h3>
+              <h3 className="text-sm font-semibold text-[var(--foreground)]">Uploaded Document Proof</h3>
               {previewUrl && (
                 <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-[var(--primary)] hover:underline">
                   Open full size ↗
@@ -504,25 +504,25 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
               )}
             </div>
             {previewUrl ? (
-              <div className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
+              <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card-muted)]">
                 <img src={previewUrl} alt={proof.original_name || "Attachment"} className="w-full h-auto object-contain max-h-[800px]" />
               </div>
             ) : (
-              <div className="rounded-xl border-2 border-dashed bg-slate-50 p-12 text-center text-sm text-slate-400">
+              <div className="rounded-xl border-2 border-dashed bg-[var(--card-muted)] p-12 text-center text-sm text-[var(--muted)]">
                 No automatic image preview available ({proof.original_name || "PDF Document"})
               </div>
             )}
-            <div className="pt-2 text-xs text-slate-400 break-all">
+            <div className="pt-2 text-xs text-[var(--muted)] break-all">
               <strong>Storage File Path:</strong> {proof.file_path}
             </div>
           </div>
 
           {/* Column B: Structured Fields Form Card */}
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-sm flex flex-col">
             {/* 1. Status & Alerts Area */}
-            <div className={`p-4 border-b ${proof.linked_entry_id ? "bg-blue-50 border-blue-200 text-blue-800 rounded-t-2xl" :
+            <div className={`p-4 border-b ${proof.linked_entry_id ? "bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20 text-blue-800 dark:text-blue-400 rounded-t-2xl" :
                 proof.processing_status === "reviewed" ? "bg-[var(--primary)]/10 border-[var(--primary)]/20 text-[var(--primary)] rounded-t-2xl" :
-                  isReady ? "bg-emerald-50 border-emerald-200 text-emerald-800 rounded-t-2xl" : "bg-amber-50 border-amber-200 text-amber-800 rounded-t-2xl"
+                  isReady ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-400 rounded-t-2xl" : "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-400 rounded-t-2xl"
               }`}>
               <h2 className="text-lg font-bold">
                 {proof.linked_entry_id ? "Linked to Ledger" :
@@ -542,21 +542,21 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
 
             <div className="p-6 space-y-6 flex-1">
               {duplicates.length > 0 && (
-                <div className={`${duplicates[0].score === "likely" ? "bg-red-50 border-red-200" : "bg-orange-50 border-orange-200"} border rounded-xl p-4`}>
-                  <p className={`text-sm font-bold ${duplicates[0].score === "likely" ? "text-red-800" : "text-orange-800"}`}>
+                <div className={`${duplicates[0].score === "likely" ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20" : "bg-orange-50 dark:bg-orange-500/10 border-orange-200 dark:border-orange-500/20"} border rounded-xl p-4`}>
+                  <p className={`text-sm font-bold ${duplicates[0].score === "likely" ? "text-red-800 dark:text-red-400" : "text-orange-800 dark:text-orange-400"}`}>
                     ⚠️ {duplicates[0].score === "likely" ? "Likely" : "Possible"} Duplicate Detected
                   </p>
-                  <p className={`text-sm mt-1 ${duplicates[0].score === "likely" ? "text-red-700" : "text-orange-700"}`}>
+                  <p className={`text-sm mt-1 ${duplicates[0].score === "likely" ? "text-red-700 dark:text-red-400" : "text-orange-700 dark:text-orange-400"}`}>
                     This looks very similar to <Link href={`/inbox/${duplicates[0].proof.id}`} className="font-bold underline hover:opacity-80">Proof #{duplicates[0].proof.id}</Link>.
                   </p>
-                  <p className={`text-xs mt-2 font-medium ${duplicates[0].score === "likely" ? "text-red-800" : "text-orange-800"}`}>
+                  <p className={`text-xs mt-2 font-medium ${duplicates[0].score === "likely" ? "text-red-800 dark:text-red-400" : "text-orange-800 dark:text-orange-400"}`}>
                     Matches on: {duplicates[0].reasons.join(", ")}
                   </p>
                   <div className="mt-3 flex items-center gap-3">
-                    <Link href={`/inbox/${duplicates[0].proof.id}`} className={`text-xs font-semibold px-3 py-1.5 rounded-lg border ${duplicates[0].score === "likely" ? "bg-red-100 text-red-800 border-red-200 hover:bg-red-200" : "bg-orange-100 text-orange-800 border-orange-200 hover:bg-orange-200"}`}>
+                    <Link href={`/inbox/${duplicates[0].proof.id}`} className={`text-xs font-semibold px-3 py-1.5 rounded-lg border ${duplicates[0].score === "likely" ? "bg-red-100 dark:bg-red-500/20 text-red-800 dark:text-red-400 border-red-200 dark:border-red-500/20 hover:bg-red-200" : "bg-orange-100 dark:bg-orange-500/20 text-orange-800 dark:text-orange-400 border-orange-200 dark:border-orange-500/20 hover:bg-orange-200"}`}>
                       Open Proof #{duplicates[0].proof.id}
                     </Link>
-                    <a href={`/inbox/${duplicates[0].proof.id}`} target="_blank" rel="noopener noreferrer" className={`text-xs hover:underline ${duplicates[0].score === "likely" ? "text-red-700" : "text-orange-700"}`}>
+                    <a href={`/inbox/${duplicates[0].proof.id}`} target="_blank" rel="noopener noreferrer" className={`text-xs hover:underline ${duplicates[0].score === "likely" ? "text-red-700 dark:text-red-400" : "text-orange-700 dark:text-orange-400"}`}>
                       Open in new tab ↗
                     </a>
                   </div>
@@ -564,42 +564,42 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
               )}
 
               {flaggedFields.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 shadow-sm">
+                <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4 shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <span className="text-amber-800 font-bold text-sm">⚠️ Attention Required</span>
-                    {isMessy && <span className="bg-amber-200 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Handwritten / Messy</span>}
+                    <span className="text-amber-800 dark:text-amber-400 font-bold text-sm">⚠️ Attention Required</span>
+                    {isMessy && <span className="bg-amber-200 dark:bg-amber-500/20 text-amber-900 dark:text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Handwritten / Messy</span>}
                   </div>
                   <div className="space-y-2">
                     {flaggedFields.map(f => (
-                      <div key={f.name} className="flex items-center justify-between bg-white/60 px-3 py-2 rounded-lg border border-amber-100">
+                      <div key={f.name} className="flex items-center justify-between bg-[var(--card)]/60 px-3 py-2 rounded-lg border border-amber-100 dark:border-amber-500/20">
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-slate-700">{f.label}</span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${f.status === "missing" ? "bg-red-100 text-red-700" : "bg-amber-200 text-amber-800"}`}>
+                            <span className="text-xs font-bold text-[var(--foreground)]">{f.label}</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${f.status === "missing" ? "bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400" : "bg-amber-200 dark:bg-amber-500/20 text-amber-800 dark:text-amber-400"}`}>
                               {f.status === "missing" ? "Missing" : "Needs Review"}
                             </span>
                           </div>
-                          <div className="text-sm font-medium mt-0.5 text-slate-900">{String(f.value)}</div>
+                          <div className="text-sm font-medium mt-0.5 text-[var(--foreground)]">{String(f.value)}</div>
                         </div>
                         <button
                           onClick={() => setManuallyReviewedFields(prev => new Set(prev).add(f.name))}
-                          className="text-xs font-semibold bg-white text-slate-700 border border-slate-300 shadow-sm px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors"
+                          className="text-xs font-semibold bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] shadow-sm px-3 py-1.5 rounded-lg hover:bg-[var(--card-muted)] transition-colors"
                         >
                           Mark Reviewed
                         </button>
                       </div>
                     ))}
                   </div>
-                  <p className="text-[10px] text-amber-700 mt-3 font-medium opacity-80 uppercase tracking-wide">
+                  <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-3 font-medium opacity-80 uppercase tracking-wide">
                     Edit missing/weak values in the form below, then mark them as reviewed here.
                   </p>
                 </div>
               )}
 
               {proof.comment && (
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Original Upload Note</span>
-                  <p className="text-sm text-slate-800 mt-1">{proof.comment}</p>
+                <div className="bg-[var(--card-muted)] rounded-xl p-4 border border-[var(--border)]">
+                  <span className="text-xs font-bold uppercase tracking-wide text-[var(--muted)]">Original Upload Note</span>
+                  <p className="text-sm text-[var(--foreground)] mt-1">{proof.comment}</p>
                 </div>
               )}
 
@@ -610,50 +610,50 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                   </div>
                   <div>
                     <span className="text-xs font-bold uppercase tracking-wide text-[#128C7E]">Received via WhatsApp</span>
-                    <p className="text-sm text-slate-800 font-medium">Sender: {proof.metadata?.whatsapp_sender || "Unknown Number"}</p>
+                    <p className="text-sm text-[var(--foreground)] font-medium">Sender: {proof.metadata?.whatsapp_sender || "Unknown Number"}</p>
                   </div>
                 </div>
               )}
 
               <div>
-                <h3 className="text-base font-bold text-slate-900">Extracted Information</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Verify the fields match the document</p>
+                <h3 className="text-base font-bold text-[var(--foreground)]">Extracted Information</h3>
+                <p className="text-xs text-[var(--muted)] mt-0.5">Verify the fields match the document</p>
               </div>
 
               {!isEditing ? (
                 // Display Form View Mode
                 <div className="space-y-4 pt-2">
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-xl border bg-slate-50 p-3 col-span-2">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Party / Vendor</span>
-                      <p className="text-lg font-bold text-slate-900 mt-0.5">{proof.extracted_party || "—"}</p>
+                    <div className="rounded-xl border bg-[var(--card-muted)] p-3 col-span-2">
+                      <span className="text-[10px] font-bold text-[var(--muted)] uppercase tracking-wider">Party / Vendor</span>
+                      <p className="text-lg font-bold text-[var(--foreground)] mt-0.5">{proof.extracted_party || "—"}</p>
                     </div>
-                    <div className="rounded-xl border bg-emerald-50 border-emerald-100 p-3">
-                      <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Amount (₹)</span>
-                      <p className="text-lg font-bold text-emerald-900 mt-0.5">
+                    <div className="rounded-xl border bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20 p-3">
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-wider">Amount (₹)</span>
+                      <p className="text-lg font-bold text-emerald-900 dark:text-emerald-300 mt-0.5">
                         {proof.extracted_amount != null ? `₹${proof.extracted_amount.toFixed(2)}` : "—"}
                       </p>
                     </div>
-                    <div className="rounded-xl border bg-slate-50 p-3 col-span-2">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project / Site</span>
-                      <p className="text-sm font-semibold text-slate-900 mt-0.5">{proof.project_name || "—"}</p>
+                    <div className="rounded-xl border bg-[var(--card-muted)] p-3 col-span-2">
+                      <span className="text-[10px] font-bold text-[var(--muted)] uppercase tracking-wider">Project / Site</span>
+                      <p className="text-sm font-semibold text-[var(--foreground)] mt-0.5">{proof.project_name || "—"}</p>
                     </div>
-                    <div className="rounded-xl border bg-slate-50 p-3 flex flex-col justify-center">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date</span>
-                      <p className="text-sm font-semibold text-slate-900 mt-0.5">{proof.extracted_date || "—"}</p>
+                    <div className="rounded-xl border bg-[var(--card-muted)] p-3 flex flex-col justify-center">
+                      <span className="text-[10px] font-bold text-[var(--muted)] uppercase tracking-wider">Date</span>
+                      <p className="text-sm font-semibold text-[var(--foreground)] mt-0.5">{proof.extracted_date || "—"}</p>
                     </div>
-                    <div className="rounded-xl border bg-slate-50 p-3">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Category</span>
-                      <p className="text-sm font-semibold text-slate-900 mt-0.5 capitalize">{proof.extracted_category || "—"}</p>
+                    <div className="rounded-xl border bg-[var(--card-muted)] p-3">
+                      <span className="text-[10px] font-bold text-[var(--muted)] uppercase tracking-wider">Category</span>
+                      <p className="text-sm font-semibold text-[var(--foreground)] mt-0.5 capitalize">{proof.extracted_category || "—"}</p>
                     </div>
-                    <div className="rounded-xl border bg-slate-50 p-3">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Type</span>
-                      <p className="text-sm font-semibold text-slate-900 mt-0.5 capitalize">{proof.extracted_entry_type || "—"}</p>
+                    <div className="rounded-xl border bg-[var(--card-muted)] p-3">
+                      <span className="text-[10px] font-bold text-[var(--muted)] uppercase tracking-wider">Type</span>
+                      <p className="text-sm font-semibold text-[var(--foreground)] mt-0.5 capitalize">{proof.extracted_entry_type || "—"}</p>
                     </div>
                   </div>
 
                   <div className="flex gap-3">
-                    <button type="button" onClick={startEditing} className="flex-1 rounded-xl border border-slate-300 bg-white py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition-colors">
+                    <button type="button" onClick={startEditing} className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--card)] py-2.5 text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors">
                       Edit Extracted Metadata Fields
                     </button>
                     <button type="button" onClick={handleReExtract} disabled={extracting} className="rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/10 px-4 py-2.5 text-xs font-semibold text-[var(--primary)] hover:bg-[var(--primary)]/20 transition-colors disabled:opacity-50">
@@ -665,25 +665,25 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                 // Display Edit Form Workspace Input Fields
                 <div className="space-y-4 border-t pt-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Party / Vendor Name</label>
-                    <input type="text" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none" value={editParty} onChange={(e) => setEditParty(e.target.value)} />
+                    <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Party / Vendor Name</label>
+                    <input type="text" className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-slate-100 outline-none" value={editParty} onChange={(e) => setEditParty(e.target.value)} />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Project / Site</label>
-                    <input type="text" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none" value={editProject} onChange={(e) => setEditProject(e.target.value)} />
+                    <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Project / Site</label>
+                    <input type="text" className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-slate-100 outline-none" value={editProject} onChange={(e) => setEditProject(e.target.value)} />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Amount (₹)</label>
-                    <input type="number" step="0.01" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} />
+                    <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Amount (₹)</label>
+                    <input type="number" step="0.01" className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-slate-100 outline-none" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Transaction Date</label>
-                    <input type="date" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                    <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Transaction Date</label>
+                    <input type="date" className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-slate-100 outline-none" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">Category</label>
-                      <select className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none bg-white" value={editCategory} onChange={(e) => setEditCategory(e.target.value)}>
+                      <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Category</label>
+                      <select className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-slate-100 outline-none bg-[var(--card)]" value={editCategory} onChange={(e) => setEditCategory(e.target.value)}>
                         <option value="">-- Select --</option>
                         <option value="labour">Labour</option>
                         <option value="material">Material</option>
@@ -698,8 +698,8 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">Type</label>
-                      <select className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-slate-100 outline-none bg-white" value={editType} onChange={(e) => setEditType(e.target.value)}>
+                      <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Type</label>
+                      <select className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--foreground)] focus:ring-2 focus:ring-slate-100 outline-none bg-[var(--card)]" value={editType} onChange={(e) => setEditType(e.target.value)}>
                         <option value="">-- Select --</option>
                         <option value="expense">Expense</option>
                         <option value="income">Income</option>
@@ -707,7 +707,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                     </div>
                   </div>
                   <div className="flex gap-2 justify-end pt-2">
-                    <button type="button" onClick={() => setIsEditing(false)} disabled={saving} className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                    <button type="button" onClick={() => setIsEditing(false)} disabled={saving} className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--card-muted)] disabled:opacity-50">
                       Cancel
                     </button>
                     <button type="button" onClick={handleSaveExtracted} disabled={saving} className="rounded-xl bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)] disabled:opacity-50">
@@ -718,34 +718,34 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
               )}
 
               {proof.extracted_text && (
-                <details className="group rounded-xl border border-slate-200 bg-slate-50 p-4 [&_summary::-webkit-details-marker]:hidden">
-                  <summary className="cursor-pointer text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center justify-between outline-none">
+                <details className="group rounded-xl border border-[var(--border)] bg-[var(--card-muted)] p-4 [&_summary::-webkit-details-marker]:hidden">
+                  <summary className="cursor-pointer text-xs font-bold text-[var(--muted)] uppercase tracking-wider flex items-center justify-between outline-none">
                     Full OCR Raw Extracted Text
                     <span className="group-open:rotate-180 transition-transform">▼</span>
                   </summary>
-                  <p className="mt-3 text-xs text-slate-600 leading-relaxed whitespace-pre-wrap border-t border-slate-200 pt-3">{proof.extracted_text}</p>
+                  <p className="mt-3 text-xs text-[var(--muted)] leading-relaxed whitespace-pre-wrap border-t border-[var(--border)] pt-3">{proof.extracted_text}</p>
                 </details>
               )}
             </div>
 
             {/* 3. Primary Actions & Danger Zone */}
-            <div className="border-t border-slate-200 bg-slate-50 rounded-b-2xl p-6 space-y-8">
+            <div className="border-t border-[var(--border)] bg-[var(--card-muted)] rounded-b-2xl p-6 space-y-8">
               {isQueueMode ? (
                 <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Queue Actions</h3>
-                  <p className="text-sm text-slate-600">Please review the extracted fields above. When correct, approve this to move it to your inbox.</p>
+                  <h3 className="text-sm font-bold text-[var(--foreground)] uppercase tracking-wide">Queue Actions</h3>
+                  <p className="text-sm text-[var(--muted)]">Please review the extracted fields above. When correct, approve this to move it to your inbox.</p>
                   <div className="flex gap-4 flex-col sm:flex-row">
                     <button type="button" onClick={handleApproveQueue} disabled={markingReviewed || saving || deleting} className="flex-1 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50">
                       {markingReviewed ? "Approving..." : "Approve & Next →"}
                     </button>
-                    <button type="button" onClick={handleSkipQueue} disabled={markingReviewed || saving || deleting} className="flex-1 rounded-xl border border-red-200 bg-white py-3 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors shadow-sm disabled:opacity-50">
+                    <button type="button" onClick={handleSkipQueue} disabled={markingReviewed || saving || deleting} className="flex-1 rounded-xl border border-red-200 dark:border-red-500/20 bg-[var(--card)] py-3 text-sm font-bold text-red-600 hover:bg-red-50 dark:bg-red-500/10 transition-colors shadow-sm disabled:opacity-50">
                       {deleting ? "Deleting..." : "Skip / Delete"}
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Next Step</h3>
+                  <h3 className="text-sm font-bold text-[var(--foreground)] uppercase tracking-wide">Next Step</h3>
 
                   {proof.linked_entry_id ? (
                     <>
@@ -757,26 +757,26 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                           type="button"
                           onClick={() => setShowUnlinkConfirm(true)}
                           disabled={unlinking}
-                          className="rounded-xl border border-slate-300 bg-white text-slate-700 px-6 text-sm font-bold hover:bg-slate-100 disabled:opacity-50 transition-colors shadow-sm"
+                          className="rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] px-6 text-sm font-bold hover:bg-[var(--background)] disabled:opacity-50 transition-colors shadow-sm"
                         >
                           {unlinking ? "..." : "Unlink"}
                         </button>
                       </div>
 
                       {showUnlinkConfirm && (
-                        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                          <p className="text-sm font-bold text-amber-900">Unlink this proof from the ledger draft?</p>
-                          <p className="mt-1 text-sm text-amber-800">
+                        <div className="mt-3 rounded-xl border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 p-4">
+                          <p className="text-sm font-bold text-amber-900 dark:text-amber-300">Unlink this proof from the ledger draft?</p>
+                          <p className="mt-1 text-sm text-amber-800 dark:text-amber-400">
                             This will safely remove the connection. The ledger draft will remain intact, but this proof can then be deleted or linked to something else.
                           </p>
                           <div className="mt-4 flex gap-2 justify-end">
-                            <button type="button" onClick={() => setShowUnlinkConfirm(false)} disabled={unlinking} className="rounded-lg px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-200 bg-slate-100 border border-slate-300">
+                            <button type="button" onClick={() => setShowUnlinkConfirm(false)} disabled={unlinking} className="rounded-lg px-4 py-2 text-sm font-bold text-[var(--foreground)] hover:bg-[var(--border)] bg-[var(--background)] border border-[var(--border)]">
                               Cancel
                             </button>
                             <button type="button" onClick={handleUnlink} disabled={unlinking} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-700">
                               {unlinking ? "Unlinking..." : "Yes, Unlink"}
                             </button>
-                            <button type="button" onClick={handleDelete} disabled={deleting} className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
+                            <button type="button" onClick={handleDelete} disabled={deleting} className="rounded-lg border border-red-200 dark:border-red-500/20 bg-[var(--card)] px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:bg-red-500/10 disabled:opacity-50">
                               {deleting ? "Deleting..." : "Delete entirely"}
                             </button>
                           </div>
@@ -785,7 +785,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                     </>
                   ) : (
                     <>
-                      <div className="mb-6 p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+                      <div className="mb-6 p-4 rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-sm">
                         <label className="flex items-center gap-3 cursor-pointer">
                           <input
                             type="checkbox"
@@ -794,21 +794,21 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                             className="w-5 h-5 rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)]"
                           />
                           <div className="flex flex-col">
-                            <span className="text-sm font-bold text-slate-800">Mark as Split Expense</span>
-                            <span className="text-xs text-slate-500 mt-0.5">You can split any expense type, not just labour/subcontract.</span>
+                            <span className="text-sm font-bold text-[var(--foreground)]">Mark as Split Expense</span>
+                            <span className="text-xs text-[var(--muted)] mt-0.5">You can split any expense type, not just labour/subcontract.</span>
                           </div>
                         </label>
 
                         {isSplit && (
-                          <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
-                            <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-200">
+                          <div className="mt-4 pt-4 border-t border-[var(--border)] space-y-4">
+                            <div className="flex items-center justify-between bg-[var(--card-muted)] p-3 rounded-lg border border-[var(--border)]">
                               <div>
-                                <span className="text-xs text-slate-500 font-semibold block">Total Payment</span>
-                                <span className="text-sm font-bold text-slate-900">₹{proof.extracted_amount || 0}</span>
+                                <span className="text-xs text-[var(--muted)] font-semibold block">Total Payment</span>
+                                <span className="text-sm font-bold text-[var(--foreground)]">₹{proof.extracted_amount || 0}</span>
                               </div>
                               <div className="text-right">
-                                <span className="text-xs text-slate-500 font-semibold block">Remaining to Allocate</span>
-                                <span className={`text-sm font-bold ${((proof.extracted_amount || 0) - splitRows.reduce((acc, r) => acc + r.amount, 0)) === 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                                <span className="text-xs text-[var(--muted)] font-semibold block">Remaining to Allocate</span>
+                                <span className={`text-sm font-bold ${((proof.extracted_amount || 0) - splitRows.reduce((acc, r) => acc + r.amount, 0)) === 0 ? "text-emerald-600 dark:text-emerald-500" : "text-amber-600 dark:text-amber-500"}`}>
                                   ₹{(proof.extracted_amount || 0) - splitRows.reduce((acc, r) => acc + r.amount, 0)}
                                 </span>
                               </div>
@@ -850,7 +850,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                                   </div>
                                   <button
                                     onClick={() => setSplitRows(splitRows.filter((_, i) => i !== index))}
-                                    className="p-1.5 text-slate-400 hover:text-red-600"
+                                    className="p-1.5 text-[var(--muted)] hover:text-red-600"
                                     title="Remove row"
                                   >
                                     ✕
@@ -868,14 +868,14 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                         )}
                       </div>
 
-                      <p className="text-xs text-slate-500 mb-2">Reviewed means checked by you. It does not create a ledger draft.</p>
+                      <p className="text-xs text-[var(--muted)] mb-2">Reviewed means checked by you. It does not create a ledger draft.</p>
                       <div className="flex gap-3">
                         {proof.processing_status !== "reviewed" && (
                           <button
                             type="button"
                             onClick={() => handleSetReviewStatus("reviewed")}
                             disabled={markingReviewed || draftLoading}
-                            className="rounded-xl border border-slate-300 bg-white text-slate-700 px-6 py-3 text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
+                            className="rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] px-6 py-3 text-sm font-bold hover:bg-[var(--card-muted)] transition-colors shadow-sm disabled:opacity-50"
                           >
                             {markingReviewed ? "..." : "Mark as Reviewed"}
                           </button>
@@ -886,7 +886,7 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
                           onClick={handleCreateLedgerDraft}
                           disabled={draftLoading || !isReady || (isSplit && (proof.extracted_amount || 0) - splitRows.reduce((acc, r) => acc + r.amount, 0) !== 0)}
                           title={!isReady ? "Party, amount, and date must be filled" : (isSplit && (proof.extracted_amount || 0) - splitRows.reduce((acc, r) => acc + r.amount, 0) !== 0) ? "Allocated amounts must match total" : ""}
-                          className="flex-1 rounded-xl bg-slate-900 py-3 text-base font-bold text-white hover:bg-slate-800 disabled:opacity-40 transition-opacity shadow-sm"
+                          className="flex-1 rounded-xl bg-slate-900 py-3 text-base font-bold text-white hover:bg-[var(--foreground)] disabled:opacity-40 transition-opacity shadow-sm"
                         >
                           {draftLoading ? "Generating..." : "Create Ledger Draft Entry →"}
                         </button>
@@ -897,13 +897,13 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
               )}
 
               {/* Danger Zone */}
-              <div className="pt-6 border-t border-slate-200">
+              <div className="pt-6 border-t border-[var(--border)]">
                 <div className="space-y-3">
                   <h3 className="text-[10px] font-bold text-red-600 uppercase tracking-widest">Danger Zone</h3>
-                  <div className="flex items-center justify-between bg-white border border-red-200 rounded-xl p-4 shadow-sm">
+                  <div className="flex items-center justify-between bg-[var(--card)] border border-red-200 dark:border-red-500/20 rounded-xl p-4 shadow-sm">
                     <div>
-                      <p className="text-sm font-bold text-slate-900">Delete this proof</p>
-                      <p className="text-xs text-slate-500 mt-1">
+                      <p className="text-sm font-bold text-[var(--foreground)]">Delete this proof</p>
+                      <p className="text-xs text-[var(--muted)] mt-1">
                         {proof.linked_entry_id
                           ? "You must unlink this proof before you can delete it."
                           : "Permanently remove this file and its data. This cannot be undone."}
@@ -923,20 +923,20 @@ export default function SingleProofReviewPage({ params }: { params: Promise<{ id
 
               {/* Activity History */}
               {history.length > 0 && (
-                <div className="pt-6 border-t border-slate-200">
-                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Activity History</h3>
+                <div className="pt-6 border-t border-[var(--border)]">
+                  <h3 className="text-[10px] font-bold text-[var(--muted)] uppercase tracking-widest mb-4">Activity History</h3>
                   <div className="space-y-4">
                     {history.map((log: any) => (
                       <div key={log.id} className="flex gap-3">
                         <div className="flex flex-col items-center">
                           <div className="w-2 h-2 rounded-full bg-slate-300 mt-1.5" />
-                          <div className="w-px h-full bg-slate-200 mt-1" />
+                          <div className="w-px h-full bg-[var(--border)] mt-1" />
                         </div>
                         <div className="pb-2">
-                          <p className="text-sm font-semibold text-slate-800 capitalize">{log.action.replace("_", " ")}</p>
-                          <p className="text-xs text-slate-500 mt-0.5">{new Date(log.created_at).toLocaleString()}</p>
+                          <p className="text-sm font-semibold text-[var(--foreground)] capitalize">{log.action.replace("_", " ")}</p>
+                          <p className="text-xs text-[var(--muted)] mt-0.5">{new Date(log.created_at).toLocaleString()}</p>
                           {log.details?.fields && (
-                            <p className="text-xs text-slate-600 mt-1">
+                            <p className="text-xs text-[var(--muted)] mt-1">
                               Fields: {log.details.fields.join(", ")}
                             </p>
                           )}
