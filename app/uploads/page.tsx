@@ -479,7 +479,7 @@ export default function UploadsPage() {
               >
                 Upload proof →
               </button>
-            )}>
+            )}
 
             {message && (
               <p className={`text-sm font-medium ${status === "error" ? "text-red-700 dark:text-red-400" : "text-[var(--foreground)]"}`}>
