@@ -194,7 +194,8 @@ export async function processWhatsAppMessage(
       await admin.from("whatsapp_sessions").update({ current_state: "AWAITING_MONTHLY_MONTH" }).eq("whatsapp_number", fromNumber);
       await sendWhatsAppMessage(fromNumber, "Please reply with the month and year (e.g., 'June 2026'). 📅");
     } else if (command === "3") {
-      await sendWhatsAppMessage(fromNumber, "Coming next, please use Upload for now.");
+      await admin.from("whatsapp_sessions").update({ current_state: "AWAITING_PARTY_NAME" }).eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "Please reply with the name of the worker or party. 👤");
     } else if (command === "4" || command === "cancel" || command === "done") {
       await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
       await sendWhatsAppMessage(fromNumber, "Done! Feel free to say 'hi' whenever you need the menu again. 👋");
@@ -274,6 +275,54 @@ export async function processWhatsAppMessage(
       
       if (signedData?.signedUrl) {
         await sendWhatsAppMessage(fromNumber, `Found ${entries.length} entries. Here is your Excel export! 📊`, signedData.signedUrl);
+      } else {
+        await sendWhatsAppMessage(fromNumber, "Failed to sign URL for export.");
+      }
+    } catch (err) {
+      console.error("Export failed", err);
+      await sendWhatsAppMessage(fromNumber, "Failed to generate the export.");
+    }
+
+    await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
+  } else if (state === "AWAITING_PARTY_NAME") {
+    console.log(`[WhatsApp Bot] Entered branch: AWAITING_PARTY_NAME for ${fromNumber}`);
+    if (command === "cancel") {
+      await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, "Cancelled. Say 'hi' to see the menu again.");
+      return;
+    }
+
+    const partySearchTerm = bodyText.trim();
+    if (!partySearchTerm) {
+      await sendWhatsAppMessage(fromNumber, "Please provide a valid name or type 'cancel'.");
+      return;
+    }
+
+    await sendTypingIndicator(fromNumber);
+    await sendWhatsAppMessage(fromNumber, "Fetching ledger entries... ⏳");
+
+    const { data: entries, error } = await admin
+      .from("ledger_entries")
+      .select("*")
+      .eq("user_id", userId)
+      .ilike("party_name", `%${partySearchTerm}%`)
+      .order("entry_date", { ascending: true });
+
+    if (error || !entries || entries.length === 0) {
+      await admin.from("whatsapp_sessions").update({ current_state: "IDLE" }).eq("whatsapp_number", fromNumber);
+      await sendWhatsAppMessage(fromNumber, `No entries found matching "${partySearchTerm}". 📉`);
+      return;
+    }
+
+    try {
+      const excelBuffer = await generateDetailedExportBuffer(entries, { month: `Party Export` });
+      const safeName = partySearchTerm.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+      const fileName = `exports/party_${safeName}_${Date.now()}.xlsx`;
+      await admin.storage.from("proofs").upload(fileName, excelBuffer, { contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", upsert: true });
+      const { data: signedData } = await admin.storage.from("proofs").createSignedUrl(fileName, 3600);
+      
+      if (signedData?.signedUrl) {
+        await sendWhatsAppMessage(fromNumber, `Found ${entries.length} entries matching "${partySearchTerm}". Here is your Excel export! 📊`, signedData.signedUrl);
       } else {
         await sendWhatsAppMessage(fromNumber, "Failed to sign URL for export.");
       }
