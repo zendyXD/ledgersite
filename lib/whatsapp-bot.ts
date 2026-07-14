@@ -26,7 +26,7 @@ async function sendWhatsAppMessage(to: string, body: string, mediaUrl?: string) 
 
 // Public Beta: Send a Twilio WhatsApp typing indicator.
 // If this fails or is not supported by the account, it fails silently and the bot continues.
-async function sendTypingIndicator(to: string) {
+async function sendTypingIndicator(messageSid: string) {
   // The fallback text indicator is sent immediately alongside this attempt.
   // You may need to adjust the payload based on the exact Twilio beta documentation if this throws.
   if (!accountSid || !authToken) return;
@@ -35,10 +35,10 @@ async function sendTypingIndicator(to: string) {
   // Note: Standard way to trigger typing in Conversations API is well known,
   // but for Programmable Messaging beta it may vary. This is a best-effort call.
   // We don't await/throw on this.
-  fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+  fetch(`https://messaging.twilio.com/v3/Indicators/Typing.json`, {
     method: "POST",
-    headers: { "Authorization": authHeader, "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ To: to, From: twilioFrom, Action: "typing" }).toString()
+    headers: { "Authorization": authHeader, "Content-Type": "application/json" },
+    body: JSON.stringify({ channel: "WHATSAPP", messageId: messageSid })
   }).catch(() => {});
 }
 
@@ -170,7 +170,7 @@ export async function processWhatsAppMessage(
       return;
     }
 
-    await sendTypingIndicator(fromNumber);
+    await sendTypingIndicator(messageSid);
     await sendWhatsAppMessage(fromNumber, "Extracting details... ⏳");
 
     const { data, error } = await admin.storage.from("proofs").download(filePath);
@@ -237,7 +237,7 @@ export async function processWhatsAppMessage(
       return;
     }
 
-    await sendTypingIndicator(fromNumber);
+    await sendTypingIndicator(messageSid);
     await sendWhatsAppMessage(fromNumber, "Fetching your ledger... ⏳");
 
     const monthStr = `${y}-${m.toString().padStart(2, '0')}`;
@@ -298,7 +298,7 @@ export async function processWhatsAppMessage(
       return;
     }
 
-    await sendTypingIndicator(fromNumber);
+    await sendTypingIndicator(messageSid);
     await sendWhatsAppMessage(fromNumber, "Fetching ledger entries... ⏳");
 
     const { data: entries, error } = await admin
@@ -343,7 +343,7 @@ export async function processWhatsAppMessage(
 
 async function processNewProofUpload(fromNumber: string, userId: string, mediaUrl: string, mimeType: string, bodyText: string, admin: any, messageSid: string) {
   // Send typing indicator + text status
-  await sendTypingIndicator(fromNumber);
+  await sendTypingIndicator(messageSid);
   await sendWhatsAppMessage(fromNumber, "Extracting details... ⏳");
 
   // Fetch image
