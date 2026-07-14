@@ -120,6 +120,7 @@ export async function processWhatsAppMessage(
   if (state === "AWAITING_ACTION") {
     console.log(`[WhatsApp Bot] Entered branch: AWAITING_ACTION for ${fromNumber}`);
     if (command === "1" || command === "save") {
+      await sendTypingIndicator(messageSid);
       const payload = session.context_data?.pending_proof_payload;
       if (payload) {
         // Move file from pending to permanent
