@@ -14,7 +14,7 @@ const navItems = [
   { label: "Reports", href: "/reports", icon: BarChart3 },
 ];
 
-const hideOnRoutes = ["/login", "/signup"];
+const hideOnRoutes = ["/login", "/signup", "/", "/quick"];
 
 export default function Sidebar() {
   const pathname = usePathname();
