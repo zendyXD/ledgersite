@@ -156,9 +156,15 @@ export function parseStage1Metrics(
   const amountCandidates: { raw: string; value: number }[] = [];
   const rejectedAmountCandidates: { raw: string; reason: string }[] = [];
 
-  // Match all numbers / currency-like tokens
+  // Match all numbers / currency-like tokens:
+  // Branch 1: Indian comma format (e.g. 1,00,000 or 10,00,000.50)
+  // Branch 2: Standard comma format (e.g. 1,000 or 10,000.50)
+  // Branch 3: Greedy unformatted digits (e.g. 1000, 10000, 100000)
+  // End boundary (?![0-9]) prevents partial digit truncation
   const allNumberMatches = Array.from(
-    cleanText.matchAll(/(?:₹|Rs\.?|INR)?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?|[0-9]+(?:\.[0-9]{2})?)/gi)
+    cleanText.matchAll(
+      /(?:₹|Rs\.?|INR)?\s*([0-9]{1,2}(?:,[0-9]{2})*,[0-9]{3}(?:\.[0-9]{1,2})?|[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)(?![0-9])/gi
+    )
   );
 
   for (const m of allNumberMatches) {
@@ -328,4 +334,25 @@ export async function runClientOcr(
       }
     };
   }
+}
+
+/**
+ * Development regression check suite testing all required amount parsing cases.
+ */
+export function runOcrRegressionChecks(): { input: string; expected: number; got: number | null; passed: boolean }[] {
+  const testCases = [
+    { input: "Paid ₹1000 to Merchant", expected: 1000 },
+    { input: "Amount: Rs 10000", expected: 10000 },
+    { input: "Received ₹100000 from Bank", expected: 100000 },
+    { input: "Transfer ₹1,000 successful", expected: 1000 },
+    { input: "Debited ₹10,000 from A/C", expected: 10000 },
+    { input: "Total ₹1,00,000 paid", expected: 100000 },
+    { input: "Bill amount ₹1,250.50", expected: 1250.50 }
+  ];
+
+  return testCases.map((tc) => {
+    const res = parseStage1Metrics(tc.input);
+    const passed = res.roughAmount === tc.expected;
+    return { input: tc.input, expected: tc.expected, got: res.roughAmount, passed };
+  });
 }
