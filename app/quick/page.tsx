@@ -15,8 +15,13 @@ import {
   XCircle,
   Loader2,
   Trash2,
-  Plus
+  Plus,
+  Lock,
+  Sparkles,
+  ShieldCheck
 } from "lucide-react";
+import { TesseractPool, runClientOcr } from "@/lib/ocr";
+import { downloadQuickExcel } from "@/lib/excel";
 
 export type QuickFileRow = {
   id: string;
@@ -25,7 +30,16 @@ export type QuickFileRow = {
   previewUrl: string | null;
   fileType: string;
   fileSize: number;
-  status: "queued" | "extracting" | "ready" | "needs_review" | "failed";
+
+  // Stage 1: Browser OCR State
+  ocrStatus: "idle" | "processing" | "completed" | "failed";
+  ocrHasText?: boolean;
+  ocrRoughAmount?: number | null;
+  ocrDetectedDate?: string | null;
+  ocrErrorMessage?: string;
+
+  // Stage 2: AI Extraction State
+  extractStatus: "queued" | "extracting" | "ready" | "needs_review" | "failed";
   extracted_date?: string | null;
   extracted_party?: string | null;
   guessed_category?: string | null;
@@ -33,7 +47,7 @@ export type QuickFileRow = {
   extracted_utr?: string | null;
   guessed_type?: "income" | "expense" | null;
   extraction_confidence?: Record<string, string>;
-  errorMessage?: string;
+  extractErrorMessage?: string;
 };
 
 const MAX_BATCH_SIZE = 50;
@@ -52,15 +66,29 @@ export default function QuickPage() {
   const [files, setFiles] = useState<QuickFileRow[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [warningMessage, setWarningMessage] = useState<string>("");
+  const [stage, setStage] = useState<"stage1_ocr" | "stage1_complete" | "stage2_extracting" | "stage2_complete">("stage1_ocr");
+  const [stage2Error, setStage2Error] = useState<string>("");
+
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Active object URL tracking for memory leak prevention
   const activeUrlsRef = useRef<Set<string>>(new Set());
+  const ocrPoolRef = useRef<TesseractPool | null>(null);
 
-  // Cleanup object URLs on component unmount
+  // Lazy pool getter
+  const getOcrPool = () => {
+    if (!ocrPoolRef.current) {
+      ocrPoolRef.current = new TesseractPool();
+    }
+    return ocrPoolRef.current;
+  };
+
+  // Terminate workers on unmount
   useEffect(() => {
     const activeUrls = activeUrlsRef.current;
     return () => {
+      if (ocrPoolRef.current) {
+        ocrPoolRef.current.terminateAll();
+        ocrPoolRef.current = null;
+      }
       activeUrls.forEach((url) => URL.revokeObjectURL(url));
       activeUrls.clear();
     };
@@ -74,8 +102,72 @@ export default function QuickPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
-  // Safe single-file extraction caller
-  const processExtraction = useCallback(async (id: string, file: File) => {
+  // ----------------------------------------------------
+  // Stage 1: Browser Tesseract Queue (Max 3 Workers)
+  // ----------------------------------------------------
+  useEffect(() => {
+    const idleRows = files.filter((f) => f.ocrStatus === "idle");
+    const processingCount = files.filter((f) => f.ocrStatus === "processing").length;
+
+    if (processingCount < MAX_CONCURRENT_WORKERS && idleRows.length > 0) {
+      const slots = MAX_CONCURRENT_WORKERS - processingCount;
+      const batchToStart = idleRows.slice(0, slots);
+      const startIds = new Set(batchToStart.map((r) => r.id));
+
+      setFiles((prev) =>
+        prev.map((r) => (startIds.has(r.id) ? { ...r, ocrStatus: "processing" } : r))
+      );
+
+      const pool = getOcrPool();
+
+      batchToStart.forEach(async (row) => {
+        const res = await runClientOcr(pool, row.file);
+        setFiles((prev) =>
+          prev.map((r) => {
+            if (r.id !== row.id) return r;
+            if (res.success) {
+              return {
+                ...r,
+                ocrStatus: "completed",
+                ocrHasText: res.hasText,
+                ocrRoughAmount: res.roughAmount,
+                ocrDetectedDate: res.detectedDate
+              };
+            } else {
+              return {
+                ...r,
+                ocrStatus: "failed",
+                ocrErrorMessage: res.error || "OCR failed"
+              };
+            }
+          })
+        );
+      });
+    }
+  }, [files]);
+
+  // Check Stage 1 Queue Completion -> terminate workers
+  useEffect(() => {
+    if (files.length === 0) return;
+    const isStage1Finished = files.every(
+      (f) => f.ocrStatus === "completed" || f.ocrStatus === "failed"
+    );
+
+    if (isStage1Finished) {
+      if (ocrPoolRef.current) {
+        ocrPoolRef.current.terminateAll();
+        ocrPoolRef.current = null;
+      }
+      if (stage === "stage1_ocr") {
+        setStage("stage1_complete");
+      }
+    }
+  }, [files, stage]);
+
+  // ----------------------------------------------------
+  // Stage 2: Gemini Full Extraction Handler & Queue
+  // ----------------------------------------------------
+  const processStage2Extraction = useCallback(async (id: string, file: File) => {
     const formData = new FormData();
     formData.append("file", file);
 
@@ -88,13 +180,16 @@ export default function QuickPage() {
       const data = await res.json();
 
       if (!res.ok) {
+        if (res.status === 402) {
+          setStage2Error("Payment required to unlock full extraction.");
+        }
         setFiles((prev) =>
           prev.map((row) =>
             row.id === id
               ? {
                   ...row,
-                  status: "failed",
-                  errorMessage: data?.message || "Extraction failed"
+                  extractStatus: "failed",
+                  extractErrorMessage: data?.message || "Extraction failed"
                 }
               : row
           )
@@ -102,7 +197,6 @@ export default function QuickPage() {
         return;
       }
 
-      // Evaluate review status
       const missingCoreFields =
         !data.extracted_party ||
         data.extracted_amount == null ||
@@ -120,7 +214,7 @@ export default function QuickPage() {
           row.id === id
             ? {
                 ...row,
-                status: finalStatus,
+                extractStatus: finalStatus,
                 extracted_party: data.extracted_party ?? null,
                 extracted_amount: data.extracted_amount ?? null,
                 extracted_date: data.extracted_date ?? null,
@@ -138,8 +232,8 @@ export default function QuickPage() {
           row.id === id
             ? {
                 ...row,
-                status: "failed",
-                errorMessage: "Network error during extraction"
+                extractStatus: "failed",
+                extractErrorMessage: "Network error during extraction"
               }
             : row
         )
@@ -147,28 +241,44 @@ export default function QuickPage() {
     }
   }, []);
 
-  // Background Concurrency Queue Runner (3 Workers Max)
+  // Stage 2 Queue Runner (Max 3 Workers)
   useEffect(() => {
-    const extractingCount = files.filter((f) => f.status === "extracting").length;
-    const queuedRows = files.filter((f) => f.status === "queued");
+    if (stage !== "stage2_extracting") return;
+
+    const extractingCount = files.filter((f) => f.extractStatus === "extracting").length;
+    const queuedRows = files.filter((f) => f.extractStatus === "queued");
 
     if (extractingCount < MAX_CONCURRENT_WORKERS && queuedRows.length > 0) {
       const availableSlots = MAX_CONCURRENT_WORKERS - extractingCount;
       const rowsToStart = queuedRows.slice(0, availableSlots);
 
-      // Transition rows to 'extracting' immediately
       const startIds = new Set(rowsToStart.map((r) => r.id));
       setFiles((prev) =>
-        prev.map((r) => (startIds.has(r.id) ? { ...r, status: "extracting" } : r))
+        prev.map((r) => (startIds.has(r.id) ? { ...r, extractStatus: "extracting" } : r))
       );
 
-      // Trigger background fetches
       rowsToStart.forEach((row) => {
-        processExtraction(row.id, row.file);
+        processStage2Extraction(row.id, row.file);
       });
     }
-  }, [files, processExtraction]);
 
+    // Check if all Stage 2 jobs complete
+    if (files.length > 0 && files.every((f) => f.extractStatus === "ready" || f.extractStatus === "needs_review" || f.extractStatus === "failed")) {
+      setStage("stage2_complete");
+    }
+  }, [files, stage, processStage2Extraction]);
+
+  const handleStartStage2 = () => {
+    setStage2Error("");
+    setStage("stage2_extracting");
+    setFiles((prev) =>
+      prev.map((r) => (r.ocrStatus === "completed" ? { ...r, extractStatus: "queued" } : r))
+    );
+  };
+
+  // ----------------------------------------------------
+  // File Add / Remove / Clear Handlers
+  // ----------------------------------------------------
   const handleAddFiles = (incomingFiles: File[]) => {
     setWarningMessage("");
 
@@ -191,7 +301,6 @@ export default function QuickPage() {
       const fileId = crypto.randomUUID();
       const rawType = (f.type || "").toLowerCase();
 
-      // Check size limit
       if (f.size > MAX_FILE_SIZE_BYTES) {
         return {
           id: fileId,
@@ -200,12 +309,12 @@ export default function QuickPage() {
           previewUrl: null,
           fileType: f.type,
           fileSize: f.size,
-          status: "failed",
-          errorMessage: `File too large (max ${MAX_FILE_SIZE_MB}MB)`
+          ocrStatus: "failed",
+          ocrErrorMessage: `File too large (max ${MAX_FILE_SIZE_MB}MB)`,
+          extractStatus: "failed"
         };
       }
 
-      // Check format
       if (rawType === "application/pdf") {
         return {
           id: fileId,
@@ -214,8 +323,9 @@ export default function QuickPage() {
           previewUrl: null,
           fileType: f.type,
           fileSize: f.size,
-          status: "failed",
-          errorMessage: "PDF extraction deferred — please upload JPG, PNG, or WEBP images"
+          ocrStatus: "failed",
+          ocrErrorMessage: "PDF extraction deferred — please upload JPG, PNG, or WEBP images",
+          extractStatus: "failed"
         };
       }
 
@@ -227,8 +337,9 @@ export default function QuickPage() {
           previewUrl: null,
           fileType: f.type,
           fileSize: f.size,
-          status: "failed",
-          errorMessage: "HEIC format not supported — use JPG, PNG, or WEBP"
+          ocrStatus: "failed",
+          ocrErrorMessage: "HEIC format not supported — use JPG, PNG, or WEBP",
+          extractStatus: "failed"
         };
       }
 
@@ -240,12 +351,12 @@ export default function QuickPage() {
           previewUrl: null,
           fileType: f.type,
           fileSize: f.size,
-          status: "failed",
-          errorMessage: "Unsupported format (JPG/PNG/WEBP only)"
+          ocrStatus: "failed",
+          ocrErrorMessage: "Unsupported format (JPG/PNG/WEBP only)",
+          extractStatus: "failed"
         };
       }
 
-      // Valid image file
       const previewUrl = URL.createObjectURL(f);
       activeUrlsRef.current.add(previewUrl);
 
@@ -256,11 +367,15 @@ export default function QuickPage() {
         previewUrl,
         fileType: f.type,
         fileSize: f.size,
-        status: "queued"
+        ocrStatus: "idle",
+        extractStatus: "queued"
       };
     });
 
     setFiles((prev) => [...prev, ...newRows]);
+    if (stage === "stage1_complete") {
+      setStage("stage1_ocr");
+    }
   };
 
   const handleRemoveFile = (id: string, e?: React.MouseEvent) => {
@@ -278,6 +393,10 @@ export default function QuickPage() {
   };
 
   const handleClearAll = () => {
+    if (ocrPoolRef.current) {
+      ocrPoolRef.current.terminateAll();
+      ocrPoolRef.current = null;
+    }
     files.forEach((row) => {
       if (row.previewUrl) {
         URL.revokeObjectURL(row.previewUrl);
@@ -286,6 +405,8 @@ export default function QuickPage() {
     activeUrlsRef.current.clear();
     setFiles([]);
     setWarningMessage("");
+    setStage2Error("");
+    setStage("stage1_ocr");
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -297,19 +418,44 @@ export default function QuickPage() {
     }
   };
 
+  // ----------------------------------------------------
+  // Aggregate Stage 1 Metrics & Counts
+  // ----------------------------------------------------
+  const filesReadCount = files.filter((f) => f.ocrStatus === "completed").length;
+  const approxTransactionsDetected = files.filter((f) => f.ocrStatus === "completed" && f.ocrHasText).length;
+
+  const validDates = files
+    .map((f) => f.ocrDetectedDate)
+    .filter((d): d is string => Boolean(d))
+    .sort();
+
+  let dateRangeLabel = "Detected";
+  if (validDates.length === 1) {
+    dateRangeLabel = validDates[0];
+  } else if (validDates.length > 1) {
+    dateRangeLabel = `${validDates[0]} – ${validDates[validDates.length - 1]}`;
+  }
+
+  const validAmounts = files
+    .map((f) => f.ocrRoughAmount)
+    .filter((a): a is number => a != null && !isNaN(a));
+
+  const roughTotalSum = validAmounts.length > 0 ? validAmounts.reduce((acc, v) => acc + v, 0) : null;
+
   const counts = {
     total: files.length,
-    queued: files.filter((f) => f.status === "queued").length,
-    extracting: files.filter((f) => f.status === "extracting").length,
-    ready: files.filter((f) => f.status === "ready").length,
-    needs_review: files.filter((f) => f.status === "needs_review").length,
-    failed: files.filter((f) => f.status === "failed").length
+    ocrProcessing: files.filter((f) => f.ocrStatus === "processing" || f.ocrStatus === "idle").length,
+    ocrCompleted: files.filter((f) => f.ocrStatus === "completed").length,
+    extracting: files.filter((f) => f.extractStatus === "extracting").length,
+    ready: files.filter((f) => f.extractStatus === "ready").length,
+    needs_review: files.filter((f) => f.extractStatus === "needs_review").length,
+    failed: files.filter((f) => f.ocrStatus === "failed" || f.extractStatus === "failed").length
   };
 
   const steps = [
-    { number: 1, title: "Add screenshots", icon: Upload, current: true, description: "Upload payment proofs" },
-    { number: 2, title: "Review extracted entries", icon: ListChecks, current: false, description: "Verify amounts & dates" },
-    { number: 3, title: "Generate Excel", icon: FileSpreadsheet, current: false, description: "Download clean spreadsheet" }
+    { number: 1, title: "Client OCR Scan", icon: Upload, current: stage === "stage1_ocr" || stage === "stage1_complete", description: "Free browser-side text read" },
+    { number: 2, title: "Full AI Extraction", icon: ListChecks, current: stage === "stage2_extracting", description: "Payment-gated Gemini Vision" },
+    { number: 3, title: "Export Excel", icon: FileSpreadsheet, current: stage === "stage2_complete", description: "Download verified spreadsheet" }
   ];
 
   return (
@@ -338,7 +484,7 @@ export default function QuickPage() {
                 </span>
               </div>
               <p className="text-xs text-[var(--muted)] mt-0.5">
-                Batch payment screenshot processing for fast Excel export
+                Two-stage payment screenshot processing for fast Excel export
               </p>
             </div>
           </div>
@@ -359,7 +505,7 @@ export default function QuickPage() {
         <div className="rounded-xl bg-[var(--card-muted)] border border-[var(--border)] p-4 flex items-start gap-3">
           <Info className="w-4 h-4 text-[var(--primary)] shrink-0 mt-0.5" />
           <div className="text-xs text-[var(--muted)] leading-relaxed">
-            <strong className="text-[var(--foreground)]">Session-Only Workspace:</strong> Quick Mode operates entirely in browser client memory to parse payment screenshots into a consolidated table. Proofs are not uploaded to Supabase Storage or saved to permanent database ledgers.
+            <strong className="text-[var(--foreground)]">Session-Only & Free Stage 1 OCR:</strong> Quick Mode operates entirely in browser client memory to verify payment screenshots. Files are not uploaded to Supabase Storage or saved to permanent database ledgers.
           </div>
         </div>
 
@@ -395,7 +541,7 @@ export default function QuickPage() {
           </div>
         </div>
 
-        {/* Warning Toast */}
+        {/* Warnings & Errors */}
         {warningMessage && (
           <div className="rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-3 text-xs text-amber-800 dark:text-amber-400 font-medium flex items-center justify-between">
             <span>{warningMessage}</span>
@@ -403,6 +549,19 @@ export default function QuickPage() {
               type="button"
               onClick={() => setWarningMessage("")}
               className="text-xs text-amber-800 dark:text-amber-400 font-bold ml-2"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {stage2Error && (
+          <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-3 text-xs text-red-800 dark:text-red-400 font-medium flex items-center justify-between">
+            <span>{stage2Error}</span>
+            <button
+              type="button"
+              onClick={() => setStage2Error("")}
+              className="text-xs text-red-800 dark:text-red-400 font-bold ml-2"
             >
               ✕
             </button>
@@ -449,7 +608,7 @@ export default function QuickPage() {
                 Add payment screenshots
               </h3>
               <p className="text-xs text-[var(--muted)] max-w-md mb-5 leading-relaxed">
-                Drag & drop UPI payment screenshots, bank transfer slips, or receipt images here. Background extraction starts instantly upon selection.
+                Drag & drop UPI payment screenshots or receipt images. Browser-side free OCR starts instantly upon selection.
               </p>
 
               <button
@@ -468,11 +627,35 @@ export default function QuickPage() {
           ) : (
             <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-4 p-2">
               <div className="text-left">
-                <h4 className="text-sm font-bold text-[var(--foreground)]">
-                  Quick Mode Workbench ({counts.total} {counts.total === 1 ? "File" : "Files"})
+                <h4 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
+                  <span>Quick Mode Workbench ({counts.total} {counts.total === 1 ? "File" : "Files"})</span>
+                  {stage === "stage1_ocr" && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Client OCR Scanning...
+                    </span>
+                  )}
+                  {stage === "stage1_complete" && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                      <Lock className="w-3 h-3" />
+                      Stage 1 Complete (Locked)
+                    </span>
+                  )}
+                  {stage === "stage2_extracting" && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Full AI Extraction...
+                    </span>
+                  )}
+                  {stage === "stage2_complete" && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Stage 2 Unlocked
+                    </span>
+                  )}
                 </h4>
-                <p className="text-xs text-[var(--muted)]">
-                  Background extraction active • Up to 3 files processing in parallel
+                <p className="text-xs text-[var(--muted)] mt-0.5">
+                  Browser Tesseract OCR worker pool active (up to 3 workers parallel)
                 </p>
               </div>
 
@@ -488,51 +671,50 @@ export default function QuickPage() {
           )}
         </div>
 
-        {/* Workbench Counter Summary Bar */}
+        {/* Stage 1 Summary Banner (Client-side Rough OCR Estimates) */}
         {files.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="surface-panel p-3 rounded-xl flex flex-col">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Total</span>
-              <span className="text-lg font-extrabold text-[var(--foreground)] mt-0.5">{counts.total}</span>
-            </div>
-
-            <div className="surface-panel p-3 rounded-xl flex flex-col border-l-4 border-l-blue-500">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                {(counts.queued > 0 || counts.extracting > 0) && <Loader2 className="w-3 h-3 animate-spin" />}
-                Processing
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="surface-panel p-3.5 rounded-xl flex flex-col border-l-4 border-l-blue-500">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] flex items-center justify-between">
+                <span>Files Read</span>
+                <span className="text-[9px] bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded font-mono">Session-only</span>
               </span>
-              <span className="text-lg font-extrabold text-[var(--foreground)] mt-0.5">
-                {counts.queued + counts.extracting}
+              <span className="text-lg font-extrabold text-[var(--foreground)] mt-1">
+                {filesReadCount} <span className="text-xs font-normal text-[var(--muted)]">/ {counts.total}</span>
               </span>
             </div>
 
-            <div className="surface-panel p-3 rounded-xl flex flex-col border-l-4 border-l-emerald-500">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" />
-                Ready
+            <div className="surface-panel p-3.5 rounded-xl flex flex-col border-l-4 border-l-indigo-500">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] flex items-center justify-between">
+                <span>Approx. transactions detected</span>
+                <span className="text-[9px] bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded font-mono">OCR estimate</span>
               </span>
-              <span className="text-lg font-extrabold text-emerald-700 dark:text-emerald-400 mt-0.5">
-                {counts.ready}
-              </span>
-            </div>
-
-            <div className="surface-panel p-3 rounded-xl flex flex-col border-l-4 border-l-amber-500">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" />
-                Needs Review
-              </span>
-              <span className="text-lg font-extrabold text-amber-700 dark:text-amber-400 mt-0.5">
-                {counts.needs_review}
+              <span className="text-lg font-extrabold text-[var(--foreground)] mt-1">
+                {approxTransactionsDetected}
               </span>
             </div>
 
-            <div className="surface-panel p-3 rounded-xl flex flex-col border-l-4 border-l-red-500 col-span-2 sm:col-span-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400 flex items-center gap-1">
-                <XCircle className="w-3 h-3" />
-                Failed
+            <div className="surface-panel p-3.5 rounded-xl flex flex-col border-l-4 border-l-teal-500">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] flex items-center justify-between">
+                <span>Approx. Date Range</span>
+                <span className="text-[9px] bg-teal-50 dark:bg-teal-500/10 text-teal-600 dark:text-teal-400 px-1.5 py-0.5 rounded font-mono">Detected</span>
               </span>
-              <span className="text-lg font-extrabold text-red-700 dark:text-red-400 mt-0.5">
-                {counts.failed}
+              <span className="text-sm font-extrabold text-[var(--foreground)] mt-1.5 truncate" title={dateRangeLabel}>
+                {dateRangeLabel}
+              </span>
+            </div>
+
+            <div className="surface-panel p-3.5 rounded-xl flex flex-col border-l-4 border-l-purple-500">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] flex items-center justify-between">
+                <span>Estimated Total</span>
+                <span className="text-[9px] bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-mono">OCR estimate</span>
+              </span>
+              <span className="text-lg font-extrabold text-[var(--foreground)] mt-1">
+                {roughTotalSum != null ? (
+                  <span className="font-mono">₹{roughTotalSum.toLocaleString("en-IN")}</span>
+                ) : (
+                  <span className="text-xs font-semibold text-[var(--muted)] italic">Estimate unavailable</span>
+                )}
               </span>
             </div>
           </div>
@@ -540,8 +722,38 @@ export default function QuickPage() {
 
         {/* Workbench Table */}
         {files.length > 0 && (
-          <div className="surface-panel overflow-hidden">
-            <div className="overflow-x-auto">
+          <div className="surface-panel overflow-hidden relative">
+            
+            {/* Locked Preview Overlay for Stage 1 */}
+            {stage !== "stage2_complete" && stage !== "stage2_extracting" && (
+              <div className="p-6 bg-[var(--card)]/90 backdrop-blur-md border-b border-[var(--border)] flex flex-col items-center justify-center text-center z-10">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-3">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-[var(--foreground)] mb-1">
+                  Stage 1 OCR Scan Complete
+                </h3>
+                <p className="text-xs text-[var(--muted)] max-w-lg mb-4 leading-relaxed">
+                  Uploaded files were successfully read in your browser. Full editable ledger rows, exact transaction amounts, payee names, UTR numbers, and Excel export require payment.
+                </p>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleStartStage2}
+                    className="btn-theme-accent text-xs md:text-sm px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 cursor-pointer shadow-md"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Continue to Full Extraction</span>
+                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-black/20 text-white">
+                      Dev Bypass Active
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className={`overflow-x-auto ${stage !== "stage2_complete" ? "opacity-40 select-none blur-[1px]" : ""}`}>
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-[var(--card-muted)] text-[var(--muted)] uppercase font-semibold text-[10px] tracking-wider">
@@ -590,95 +802,126 @@ export default function QuickPage() {
 
                       {/* Per-File Status Badge */}
                       <td className="py-3 px-4 align-middle whitespace-nowrap">
-                        {row.status === "queued" && (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20">
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                            Queued
-                          </span>
-                        )}
-
-                        {row.status === "extracting" && (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20">
-                            <Loader2 className="w-3 h-3 animate-spin text-blue-600 dark:text-blue-400" />
-                            Extracting...
-                          </span>
-                        )}
-
-                        {row.status === "ready" && (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                            Ready
-                          </span>
-                        )}
-
-                        {row.status === "needs_review" && (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20" title="Missing required fields or low confidence">
-                            <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                            Needs Review
-                          </span>
-                        )}
-
-                        {row.status === "failed" && (
-                          <div className="flex flex-col">
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20 w-fit">
-                              <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
-                              Failed
+                        {stage !== "stage2_complete" && stage !== "stage2_extracting" ? (
+                          row.ocrStatus === "processing" ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20">
+                              <Loader2 className="w-3 h-3 animate-spin text-blue-600 dark:text-blue-400" />
+                              OCR Reading...
                             </span>
-                            {row.errorMessage && (
-                              <span className="text-[10px] text-red-600 dark:text-red-400 mt-0.5 truncate max-w-[160px]" title={row.errorMessage}>
-                                {row.errorMessage}
+                          ) : row.ocrStatus === "completed" ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20">
+                              <ShieldCheck className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                              OCR Verified
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">
+                              <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
+                              OCR Failed
+                            </span>
+                          )
+                        ) : (
+                          <>
+                            {row.extractStatus === "queued" && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20">
+                                Queued
                               </span>
                             )}
-                          </div>
+
+                            {row.extractStatus === "extracting" && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20">
+                                <Loader2 className="w-3 h-3 animate-spin text-purple-600 dark:text-purple-400" />
+                                Extracting...
+                              </span>
+                            )}
+
+                            {row.extractStatus === "ready" && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                Ready
+                              </span>
+                            )}
+
+                            {row.extractStatus === "needs_review" && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20">
+                                <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                                Needs Review
+                              </span>
+                            )}
+
+                            {row.extractStatus === "failed" && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">
+                                <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
+                                Failed
+                              </span>
+                            )}
+                          </>
                         )}
                       </td>
 
                       {/* Date */}
                       <td className="py-3 px-4 align-middle whitespace-nowrap text-[var(--foreground)]">
-                        {row.extracted_date ? (
-                          <span className="font-mono text-xs">{row.extracted_date}</span>
+                        {stage === "stage2_complete" ? (
+                          row.extracted_date ? (
+                            <span className="font-mono text-xs">{row.extracted_date}</span>
+                          ) : (
+                            <span className="text-[var(--muted)]">—</span>
+                          )
                         ) : (
-                          <span className="text-[var(--muted)]">—</span>
+                          <span className="font-mono text-xs text-[var(--muted)]">••••-••-••</span>
                         )}
                       </td>
 
                       {/* Party */}
                       <td className="py-3 px-4 align-middle font-medium text-[var(--foreground)] max-w-[140px] truncate">
-                        {row.extracted_party ? (
-                          <span title={row.extracted_party}>{row.extracted_party}</span>
+                        {stage === "stage2_complete" ? (
+                          row.extracted_party ? (
+                            <span title={row.extracted_party}>{row.extracted_party}</span>
+                          ) : (
+                            <span className="text-[var(--muted)] italic">Unspecified</span>
+                          )
                         ) : (
-                          <span className="text-[var(--muted)] italic">Unspecified</span>
+                          <span className="text-[var(--muted)] font-mono">••••••••••••</span>
                         )}
                       </td>
 
                       {/* Category */}
                       <td className="py-3 px-4 align-middle text-[var(--foreground)]">
-                        {row.guessed_category ? (
-                          <span className="px-2 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] text-[10px] font-medium text-[var(--muted)]">
-                            {row.guessed_category}
-                          </span>
+                        {stage === "stage2_complete" ? (
+                          row.guessed_category ? (
+                            <span className="px-2 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] text-[10px] font-medium text-[var(--muted)]">
+                              {row.guessed_category}
+                            </span>
+                          ) : (
+                            <span className="text-[var(--muted)]">—</span>
+                          )
                         ) : (
-                          <span className="text-[var(--muted)]">—</span>
+                          <span className="text-[var(--muted)] font-mono">••••••</span>
                         )}
                       </td>
 
                       {/* Amount */}
                       <td className="py-3 px-4 align-middle text-right font-semibold text-[var(--foreground)] whitespace-nowrap">
-                        {row.extracted_amount != null ? (
-                          <span className="font-mono">
-                            ₹{row.extracted_amount.toLocaleString("en-IN")}
-                          </span>
+                        {stage === "stage2_complete" ? (
+                          row.extracted_amount != null ? (
+                            <span className="font-mono">₹{row.extracted_amount.toLocaleString("en-IN")}</span>
+                          ) : (
+                            <span className="text-[var(--muted)]">—</span>
+                          )
                         ) : (
-                          <span className="text-[var(--muted)]">—</span>
+                          <span className="text-[var(--muted)] font-mono">₹•••••</span>
                         )}
                       </td>
 
                       {/* UTR / Account */}
                       <td className="py-3 px-4 align-middle font-mono text-[11px] text-[var(--muted)] max-w-[130px] truncate">
-                        {row.extracted_utr ? (
-                          <span title={row.extracted_utr}>{row.extracted_utr}</span>
+                        {stage === "stage2_complete" ? (
+                          row.extracted_utr ? (
+                            <span title={row.extracted_utr}>{row.extracted_utr}</span>
+                          ) : (
+                            <span>—</span>
+                          )
                         ) : (
-                          <span>—</span>
+                          <span>••••••••••••</span>
                         )}
                       </td>
 
@@ -698,6 +941,37 @@ export default function QuickPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Export Excel Action Bar in Stage 2 Complete */}
+            {stage === "stage2_complete" && (
+              <div className="p-4 bg-[var(--card-muted)] border-t border-[var(--border)] flex items-center justify-between">
+                <div className="text-xs text-[var(--muted)]">
+                  Full extraction complete. Ready to download clean Excel spreadsheet.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const validRows = files
+                      .filter((f) => f.extractStatus === "ready" || f.extractStatus === "needs_review")
+                      .map((f) => ({
+                        original_name: f.original_name,
+                        extracted_date: f.extracted_date || null,
+                        extracted_party: f.extracted_party || null,
+                        guessed_category: f.guessed_category || null,
+                        extracted_amount: f.extracted_amount || null,
+                        extracted_utr: f.extracted_utr || null,
+                        guessed_type: f.guessed_type || "expense",
+                        status: f.extractStatus
+                      }));
+                    downloadQuickExcel(validRows);
+                  }}
+                  className="btn-theme-accent text-xs px-4 py-2 rounded-lg font-bold flex items-center gap-2 cursor-pointer shadow-sm"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Download Quick Excel</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
 

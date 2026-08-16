@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import saveAs from "file-saver";
 
 export async function generateProofExcelBuffer(proof: any, ledgerEntry?: any): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
@@ -853,4 +854,39 @@ const sortedPartyEntries = [...monthlyEntries].sort((a, b) => {
 
     const buffer = await workbook.xlsx.writeBuffer();
   return buffer;
+}
+
+export async function downloadQuickExcel(rows: any[]) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Quick Mode Export");
+
+  sheet.columns = [
+    { header: "File Name", key: "original_name", width: 25 },
+    { header: "Date", key: "extracted_date", width: 15 },
+    { header: "Party / Payee", key: "extracted_party", width: 25 },
+    { header: "Category", key: "guessed_category", width: 20 },
+    { header: "Type", key: "guessed_type", width: 15 },
+    { header: "Amount (₹)", key: "extracted_amount", width: 15 },
+    { header: "UTR / Account", key: "extracted_utr", width: 25 },
+  ];
+
+  sheet.getRow(1).font = { bold: true };
+
+  rows.forEach((r) => {
+    sheet.addRow({
+      original_name: r.original_name || "",
+      extracted_date: r.extracted_date || "",
+      extracted_party: r.extracted_party || "",
+      guessed_category: r.guessed_category || "",
+      guessed_type: r.guessed_type || "expense",
+      extracted_amount: r.extracted_amount || 0,
+      extracted_utr: r.extracted_utr || ""
+    });
+  });
+
+  sheet.getColumn("extracted_amount").numFmt = "₹#,##0.00";
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  saveAs(blob, `Quick_Mode_Export_${new Date().toISOString().split("T")[0]}.xlsx`);
 }

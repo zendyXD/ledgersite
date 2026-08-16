@@ -48,6 +48,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 1.5 Server-Side Payment Boundary & Development Bypass Check
+    const isDevBypass = process.env.QUICK_MODE_DEV_BYPASS_PAYMENT === "true";
+    const paymentToken = request.headers.get("x-payment-token");
+
+    if (!isDevBypass && !paymentToken) {
+      return NextResponse.json(
+        { message: "Payment required for full extraction. Stage 2 access denied." },
+        { status: 402 }
+      );
+    }
+
     // 2. Parse FormData
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
