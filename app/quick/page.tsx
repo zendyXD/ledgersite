@@ -21,7 +21,13 @@ import {
   ShieldCheck,
   ChevronDown,
   Terminal,
-  RefreshCw
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Layers,
+  Split,
+  UserCheck
 } from "lucide-react";
 import { TesseractPool, runClientOcr, OcrDiagnostics } from "@/lib/ocr";
 import { downloadQuickExcel } from "@/lib/excel";
@@ -62,9 +68,18 @@ export type QuickFileRow = {
   extraction_confidence?: Record<string, string>;
   extractErrorMessage?: string;
   errorDetail?: QuickApiErrorResponse;
+
+  // UX Review State
+  isEdited?: boolean;
+  isCollapsed?: boolean;
+  isRedirectingPayee?: boolean;
+  isSplitting?: boolean;
+  splits?: Array<{ name: string; amount: number }>;
 };
 
 const MAX_BATCH_SIZE = 50;
+const REVIEW_BATCH_SIZE = 10;
+const AUTO_COLLAPSE_DELAY_MS = 2500;
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_CONCURRENT_WORKERS = 3;
@@ -84,9 +99,16 @@ export default function QuickPage() {
   const [stage2Error, setStage2Error] = useState<string>("");
   const [expandedDiagnostics, setExpandedDiagnostics] = useState<Record<string, boolean>>({});
 
+  // Chunked Review UX State
+  const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
+  const [collapsedRowIds, setCollapsedRowIds] = useState<Record<string, boolean>>({});
+  const [interactedRowIds, setInteractedRowIds] = useState<Record<string, boolean>>({});
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeUrlsRef = useRef<Set<string>>(new Set());
   const ocrPoolRef = useRef<TesseractPool | null>(null);
+  const collapseTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const rowRefs = useRef<Record<string, HTMLTableRowElement | HTMLDivElement | null>>({});
 
   const isDev = process.env.NODE_ENV === "development";
 
@@ -98,10 +120,14 @@ export default function QuickPage() {
     return ocrPoolRef.current;
   };
 
-  // Terminate workers on unmount & cleanup preview URLs
+  // Terminate workers on unmount & cleanup preview URLs & timers
   useEffect(() => {
     const activeUrls = activeUrlsRef.current;
     return () => {
+      if (collapseTimerRef.current) {
+        clearTimeout(collapseTimerRef.current);
+        collapseTimerRef.current = null;
+      }
       if (ocrPoolRef.current) {
         ocrPoolRef.current.terminateAll();
         ocrPoolRef.current = null;
@@ -110,6 +136,101 @@ export default function QuickPage() {
       activeUrls.clear();
     };
   }, []);
+
+  // Safe auto-collapse timer engine for active batch
+  useEffect(() => {
+    if (stage !== "stage2_complete") return;
+
+    if (collapseTimerRef.current) {
+      clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+
+    collapseTimerRef.current = setTimeout(() => {
+      const activeEl = document.activeElement;
+      const isInputFocused = activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "SELECT" || activeEl.tagName === "TEXTAREA");
+
+      setCollapsedRowIds((prev) => {
+        const next = { ...prev };
+        const activeBatch = files.slice(currentBatchIndex * REVIEW_BATCH_SIZE, (currentBatchIndex + 1) * REVIEW_BATCH_SIZE);
+        
+        activeBatch.forEach((row) => {
+          const isFlagged = row.extractStatus === "needs_review" || row.extractStatus === "failed" || row.ocrStatus === "failed";
+          const isUserEdited = row.isEdited || interactedRowIds[row.id];
+
+          const rowNode = rowRefs.current[row.id];
+          const hasFocusedInput = isInputFocused && rowNode && rowNode.contains(activeEl);
+
+          if (!isFlagged && !isUserEdited && !hasFocusedInput && row.extractStatus === "ready") {
+            next[row.id] = true;
+          }
+        });
+        return next;
+      });
+    }, AUTO_COLLAPSE_DELAY_MS);
+
+    return () => {
+      if (collapseTimerRef.current) {
+        clearTimeout(collapseTimerRef.current);
+        collapseTimerRef.current = null;
+      }
+    };
+  }, [currentBatchIndex, stage, files, interactedRowIds]);
+
+  // Focus & auto-scroll first flagged row upon batch load
+  useEffect(() => {
+    if (stage !== "stage2_complete") return;
+
+    const activeBatch = files.slice(currentBatchIndex * REVIEW_BATCH_SIZE, (currentBatchIndex + 1) * REVIEW_BATCH_SIZE);
+    if (activeBatch.length === 0) return;
+
+    const targetRow = activeBatch.find(
+      (r) => r.extractStatus === "needs_review" || r.extractStatus === "failed" || r.ocrStatus === "failed"
+    ) || activeBatch[0];
+
+    if (targetRow && rowRefs.current[targetRow.id]) {
+      const prefersReducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      rowRefs.current[targetRow.id]?.scrollIntoView({
+        behavior: prefersReducedMotion ? "auto" : "smooth",
+        block: "nearest"
+      });
+    }
+  }, [currentBatchIndex, stage, files]);
+
+  const handleRowInteraction = useCallback((rowId: string) => {
+    if (collapseTimerRef.current) {
+      clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+    setInteractedRowIds((prev) => ({ ...prev, [rowId]: true }));
+    setCollapsedRowIds((prev) => ({ ...prev, [rowId]: false }));
+  }, []);
+
+  const handleRowUpdate = useCallback((rowId: string, updates: Partial<QuickFileRow>) => {
+    handleRowInteraction(rowId);
+    setFiles((prev) =>
+      prev.map((r) => (r.id === rowId ? { ...r, ...updates, isEdited: true } : r))
+    );
+  }, [handleRowInteraction]);
+
+  const toggleRowCollapse = useCallback((rowId: string) => {
+    handleRowInteraction(rowId);
+    setCollapsedRowIds((prev) => ({ ...prev, [rowId]: !prev[rowId] }));
+  }, [handleRowInteraction]);
+
+  const toggleRedirectPayee = useCallback((rowId: string) => {
+    handleRowInteraction(rowId);
+    setFiles((prev) =>
+      prev.map((r) => (r.id === rowId ? { ...r, isRedirectingPayee: !r.isRedirectingPayee } : r))
+    );
+  }, [handleRowInteraction]);
+
+  const toggleSplitting = useCallback((rowId: string) => {
+    handleRowInteraction(rowId);
+    setFiles((prev) =>
+      prev.map((r) => (r.id === rowId ? { ...r, isSplitting: !r.isSplitting } : r))
+    );
+  }, [handleRowInteraction]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 B";
@@ -871,6 +992,63 @@ export default function QuickPage() {
               </div>
             )}
 
+            {/* Chunked Review Progress Header */}
+            {stage === "stage2_complete" && (() => {
+              const totalBatches = Math.max(1, Math.ceil(files.length / REVIEW_BATCH_SIZE));
+              const activeBatch = files.slice(currentBatchIndex * REVIEW_BATCH_SIZE, (currentBatchIndex + 1) * REVIEW_BATCH_SIZE);
+              const readyInBatchCount = activeBatch.filter((r) => r.extractStatus === "ready").length;
+
+              return (
+                <div className="p-4 bg-[var(--card-muted)] border-b border-[var(--border)] flex flex-col gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-[var(--foreground)] flex items-center gap-1.5">
+                          <Layers className="w-4 h-4 text-[var(--primary)]" />
+                          <span>Batch {currentBatchIndex + 1} of {totalBatches}</span>
+                        </span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] text-[var(--muted)]">
+                          Showing {currentBatchIndex * REVIEW_BATCH_SIZE + 1}–{Math.min((currentBatchIndex + 1) * REVIEW_BATCH_SIZE, files.length)} of {files.length} entries
+                        </span>
+                      </div>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-1">
+                        {readyInBatchCount}/{activeBatch.length} look ready — review the highlighted rows.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                      <button
+                        type="button"
+                        disabled={currentBatchIndex === 0}
+                        onClick={() => setCurrentBatchIndex((prev) => Math.max(0, prev - 1))}
+                        className="px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span>Previous Batch</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={currentBatchIndex >= totalBatches - 1}
+                        onClick={() => setCurrentBatchIndex((prev) => Math.min(totalBatches - 1, prev + 1))}
+                        className="px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        <span>Next Batch</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="w-full h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[var(--primary)] transition-all duration-300"
+                      style={{ width: `${((currentBatchIndex + 1) / totalBatches) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className={`overflow-x-auto ${stage !== "stage2_complete" ? "opacity-40 select-none blur-[1px]" : ""}`}>
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
@@ -887,187 +1065,300 @@ export default function QuickPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
-                  {files.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="hover:bg-[var(--card-muted)]/50 transition-colors group flex-col"
-                    >
-                      <td className="py-3 px-4 align-middle">
-                        {row.previewUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={row.previewUrl}
-                            alt="preview"
-                            className="w-10 h-10 object-cover rounded-lg bg-[var(--card-muted)] border border-[var(--border)] shrink-0"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg bg-[var(--card-muted)] border border-[var(--border)] flex items-center justify-center font-bold text-[9px] text-[var(--muted)] shrink-0">
-                            FILE
-                          </div>
-                        )}
-                      </td>
+                  {(stage === "stage2_complete"
+                    ? files.slice(currentBatchIndex * REVIEW_BATCH_SIZE, (currentBatchIndex + 1) * REVIEW_BATCH_SIZE)
+                    : files
+                  ).map((row) => {
+                    const isCollapsed = Boolean(collapsedRowIds[row.id]);
 
-                      {/* File Name & Size */}
-                      <td className="py-3 px-4 align-middle max-w-[160px] truncate">
-                        <div className="font-semibold text-[var(--foreground)] truncate" title={row.original_name}>
-                          {row.original_name}
-                        </div>
-                        <div className="text-[10px] text-[var(--muted)]">
-                          {formatFileSize(row.fileSize)}
-                        </div>
+                    if (stage === "stage2_complete" && isCollapsed) {
+                      return (
+                        <tr
+                          key={`col-${row.id}`}
+                          ref={(el) => { rowRefs.current[row.id] = el; }}
+                          className="bg-[var(--card-muted)]/30 hover:bg-[var(--card-muted)]/60 transition-colors"
+                        >
+                          <td colSpan={9} className="py-2.5 px-4">
+                            <div className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                <span className="font-semibold text-[var(--foreground)]">{row.original_name}</span>
+                                <span className="text-[11px] text-[var(--muted)]">— Not flagged — extracted rows collapsed</span>
+                                {row.extracted_party && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] font-medium">
+                                    {row.extracted_party}
+                                  </span>
+                                )}
+                                {row.extracted_amount != null && (
+                                  <span className="text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                                    ₹{row.extracted_amount.toLocaleString("en-IN")}
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => toggleRowCollapse(row.id)}
+                                className="text-[11px] font-semibold text-[var(--primary)] hover:underline flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>Expand Row</span>
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
 
-                        {/* Dev Diagnostics Toggle Button */}
-                        {isDev && row.diagnostics && (
-                          <button
-                            type="button"
-                            onClick={() => toggleDiagnostics(row.id)}
-                            className="text-[9px] font-mono text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 mt-1"
-                          >
-                            <Terminal className="w-3 h-3" />
-                            <span>{expandedDiagnostics[row.id] ? "Hide Diagnostics" : "Inspect Diagnostics"}</span>
-                            <ChevronDown className={`w-3 h-3 transition-transform ${expandedDiagnostics[row.id] ? "rotate-180" : ""}`} />
-                          </button>
-                        )}
-                      </td>
-
-                      {/* Per-File Status Badge */}
-                      <td className="py-3 px-4 align-middle whitespace-nowrap">
-                        {stage !== "stage2_complete" && stage !== "stage2_extracting" ? (
-                          row.ocrStatus === "processing" ? (
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20">
-                              <Loader2 className="w-3 h-3 animate-spin text-blue-600 dark:text-blue-400" />
-                              OCR Reading...
-                            </span>
-                          ) : row.ocrStatus === "completed" ? (
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20">
-                              <ShieldCheck className="w-3 h-3 text-teal-600 dark:text-teal-400" />
-                              OCR Verified
-                            </span>
+                    return (
+                      <tr
+                        key={row.id}
+                        ref={(el) => { rowRefs.current[row.id] = el; }}
+                        className={`hover:bg-[var(--card-muted)]/50 transition-colors group flex-col ${
+                          row.extractStatus === "needs_review"
+                            ? "bg-amber-500/5 border-l-4 border-l-amber-500"
+                            : row.extractStatus === "failed"
+                            ? "bg-red-500/5 border-l-4 border-l-red-500"
+                            : ""
+                        }`}
+                      >
+                        <td className="py-3 px-4 align-middle">
+                          {row.previewUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={row.previewUrl}
+                              alt="preview"
+                              className="w-10 h-10 object-cover rounded-lg bg-[var(--card-muted)] border border-[var(--border)] shrink-0"
+                            />
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">
-                              <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
-                              OCR Failed
-                            </span>
-                          )
-                        ) : (
-                          <>
-                            {row.extractStatus === "queued" && (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20">
-                                Queued
-                              </span>
-                            )}
+                            <div className="w-10 h-10 rounded-lg bg-[var(--card-muted)] border border-[var(--border)] flex items-center justify-center font-bold text-[9px] text-[var(--muted)] shrink-0">
+                              FILE
+                            </div>
+                          )}
+                        </td>
 
-                            {row.extractStatus === "extracting" && (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20">
-                                <Loader2 className="w-3 h-3 animate-spin text-purple-600 dark:text-purple-400" />
-                                Extracting...
-                              </span>
-                            )}
+                        {/* File Name & Size */}
+                        <td className="py-3 px-4 align-middle max-w-[160px]">
+                          <div className="font-semibold text-[var(--foreground)] truncate" title={row.original_name}>
+                            {row.original_name}
+                          </div>
+                          <div className="text-[10px] text-[var(--muted)]">
+                            {formatFileSize(row.fileSize)}
+                          </div>
 
-                            {row.extractStatus === "ready" && (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                                Ready
-                              </span>
-                            )}
+                          {/* Dev Diagnostics Toggle Button */}
+                          {isDev && row.diagnostics && (
+                            <button
+                              type="button"
+                              onClick={() => toggleDiagnostics(row.id)}
+                              className="text-[9px] font-mono text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 mt-1 cursor-pointer"
+                            >
+                              <Terminal className="w-3 h-3" />
+                              <span>{expandedDiagnostics[row.id] ? "Hide Diagnostics" : "Inspect Diagnostics"}</span>
+                              <ChevronDown className={`w-3 h-3 transition-transform ${expandedDiagnostics[row.id] ? "rotate-180" : ""}`} />
+                            </button>
+                          )}
+                        </td>
 
-                            {row.extractStatus === "needs_review" && (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20">
-                                <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                                Needs Review
+                        {/* Per-File Status Badge */}
+                        <td className="py-3 px-4 align-middle whitespace-nowrap">
+                          {stage !== "stage2_complete" && stage !== "stage2_extracting" ? (
+                            row.ocrStatus === "processing" ? (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20">
+                                <Loader2 className="w-3 h-3 animate-spin text-blue-600 dark:text-blue-400" />
+                                OCR Reading...
                               </span>
-                            )}
-
-                            {row.extractStatus === "failed" && (
+                            ) : row.ocrStatus === "completed" ? (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20">
+                                <ShieldCheck className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                                OCR Verified
+                              </span>
+                            ) : (
                               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">
                                 <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
-                                Failed
+                                OCR Failed
                               </span>
-                            )}
-                          </>
-                        )}
-                      </td>
-
-                      {/* Date */}
-                      <td className="py-3 px-4 align-middle whitespace-nowrap text-[var(--foreground)]">
-                        {stage === "stage2_complete" ? (
-                          row.extracted_date ? (
-                            <span className="font-mono text-xs">{row.extracted_date}</span>
+                            )
                           ) : (
-                            <span className="text-[var(--muted)]">—</span>
-                          )
-                        ) : (
-                          <span className="font-mono text-xs text-[var(--muted)]">••••-••-••</span>
-                        )}
-                      </td>
+                            <>
+                              {row.extractStatus === "queued" && (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20">
+                                  Queued
+                                </span>
+                              )}
 
-                      {/* Party */}
-                      <td className="py-3 px-4 align-middle font-medium text-[var(--foreground)] max-w-[140px] truncate">
-                        {stage === "stage2_complete" ? (
-                          row.extracted_party ? (
-                            <span title={row.extracted_party}>{row.extracted_party}</span>
+                              {row.extractStatus === "extracting" && (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20">
+                                  <Loader2 className="w-3 h-3 animate-spin text-purple-600 dark:text-purple-400" />
+                                  Extracting...
+                                </span>
+                              )}
+
+                              {row.extractStatus === "ready" && (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                  Ready
+                                </span>
+                              )}
+
+                              {row.extractStatus === "needs_review" && (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20">
+                                  <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                                  Needs Review
+                                </span>
+                              )}
+
+                              {row.extractStatus === "failed" && (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">
+                                  <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
+                                  Failed
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </td>
+
+                        {/* Date */}
+                        <td className="py-3 px-4 align-middle whitespace-nowrap text-[var(--foreground)]">
+                          {stage === "stage2_complete" ? (
+                            <input
+                              type="date"
+                              value={row.extracted_date || ""}
+                              onChange={(e) => handleRowUpdate(row.id, { extracted_date: e.target.value })}
+                              onFocus={() => handleRowInteraction(row.id)}
+                              className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] font-mono text-xs text-[var(--foreground)] focus:ring-1 focus:ring-[var(--primary)] outline-none"
+                            />
                           ) : (
-                            <span className="text-[var(--muted)] italic">Unspecified</span>
-                          )
-                        ) : (
-                          <span className="text-[var(--muted)] font-mono">••••••••••••</span>
-                        )}
-                      </td>
+                            <span className="font-mono text-xs text-[var(--muted)]">••••-••-••</span>
+                          )}
+                        </td>
 
-                      {/* Category */}
-                      <td className="py-3 px-4 align-middle text-[var(--foreground)]">
-                        {stage === "stage2_complete" ? (
-                          row.guessed_category ? (
-                            <span className="px-2 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] text-[10px] font-medium text-[var(--muted)]">
-                              {row.guessed_category}
-                            </span>
+                        {/* Party / Payee with Redirect Control */}
+                        <td className="py-3 px-4 align-middle font-medium text-[var(--foreground)]">
+                          {stage === "stage2_complete" ? (
+                            <div className="flex flex-col gap-1.5">
+                              <input
+                                type="text"
+                                value={row.extracted_party || ""}
+                                placeholder="Payee / Party Name"
+                                onChange={(e) => handleRowUpdate(row.id, { extracted_party: e.target.value })}
+                                onFocus={() => handleRowInteraction(row.id)}
+                                className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] focus:ring-1 focus:ring-[var(--primary)] outline-none w-full max-w-[150px]"
+                              />
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleRedirectPayee(row.id)}
+                                  className="text-[10px] text-[var(--primary)] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                                >
+                                  <UserCheck className="w-3 h-3" />
+                                  <span>{row.isRedirectingPayee ? "Close Redirect" : "Redirect Payee"}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSplitting(row.id)}
+                                  className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Split className="w-3 h-3" />
+                                  <span>{row.isSplitting ? "Close Split" : "Split Payment"}</span>
+                                </button>
+                              </div>
+
+                              {/* Experimental Split Payment Shell */}
+                              {row.isSplitting && (
+                                <div className="mt-1 p-2.5 bg-[var(--card-muted)] rounded-lg border border-[var(--border)] flex flex-col gap-1.5 max-w-[240px]">
+                                  <div className="flex items-center justify-between text-[10px]">
+                                    <span className="font-bold text-[var(--foreground)] flex items-center gap-1">
+                                      <Split className="w-3 h-3 text-[var(--primary)]" />
+                                      <span>Split Shell</span>
+                                    </span>
+                                    <span className="font-bold px-1 py-0.2 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px]">
+                                      Experimental
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col gap-1 text-[11px]">
+                                    <input
+                                      type="text"
+                                      placeholder="Sub-payee allocation"
+                                      className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs"
+                                      onChange={() => handleRowInteraction(row.id)}
+                                    />
+                                    <input
+                                      type="number"
+                                      placeholder="Sub-amount (₹)"
+                                      className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs font-mono"
+                                      onChange={() => handleRowInteraction(row.id)}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           ) : (
-                            <span className="text-[var(--muted)]">—</span>
-                          )
-                        ) : (
-                          <span className="text-[var(--muted)] font-mono">••••••</span>
-                        )}
-                      </td>
+                            <span className="text-[var(--muted)] font-mono">••••••••••••</span>
+                          )}
+                        </td>
 
-                      {/* Amount */}
-                      <td className="py-3 px-4 align-middle text-right font-semibold text-[var(--foreground)] whitespace-nowrap">
-                        {stage === "stage2_complete" ? (
-                          row.extracted_amount != null ? (
-                            <span className="font-mono">₹{row.extracted_amount.toLocaleString("en-IN")}</span>
+                        {/* Category */}
+                        <td className="py-3 px-4 align-middle text-[var(--foreground)]">
+                          {stage === "stage2_complete" ? (
+                            <input
+                              type="text"
+                              value={row.guessed_category || ""}
+                              placeholder="Category"
+                              onChange={(e) => handleRowUpdate(row.id, { guessed_category: e.target.value })}
+                              onFocus={() => handleRowInteraction(row.id)}
+                              className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] focus:ring-1 focus:ring-[var(--primary)] outline-none max-w-[110px]"
+                            />
                           ) : (
-                            <span className="text-[var(--muted)]">—</span>
-                          )
-                        ) : (
-                          <span className="text-[var(--muted)] font-mono">₹•••••</span>
-                        )}
-                      </td>
+                            <span className="text-[var(--muted)] font-mono">••••••</span>
+                          )}
+                        </td>
 
-                      {/* UTR / Account */}
-                      <td className="py-3 px-4 align-middle font-mono text-[11px] text-[var(--muted)] max-w-[130px] truncate">
-                        {stage === "stage2_complete" ? (
-                          row.extracted_utr ? (
-                            <span title={row.extracted_utr}>{row.extracted_utr}</span>
+                        {/* Amount */}
+                        <td className="py-3 px-4 align-middle text-right font-semibold text-[var(--foreground)] whitespace-nowrap">
+                          {stage === "stage2_complete" ? (
+                            <input
+                              type="number"
+                              value={row.extracted_amount ?? ""}
+                              placeholder="Amount"
+                              onChange={(e) => handleRowUpdate(row.id, { extracted_amount: e.target.value ? parseFloat(e.target.value) : null })}
+                              onFocus={() => handleRowInteraction(row.id)}
+                              className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] font-mono text-xs text-[var(--foreground)] text-right focus:ring-1 focus:ring-[var(--primary)] outline-none max-w-[90px]"
+                            />
                           ) : (
-                            <span>—</span>
-                          )
-                        ) : (
-                          <span>••••••••••••</span>
-                        )}
-                      </td>
+                            <span className="text-[var(--muted)] font-mono">₹•••••</span>
+                          )}
+                        </td>
 
-                      {/* Remove Button */}
-                      <td className="py-3 px-4 align-middle text-center">
-                        <button
-                          type="button"
-                          onClick={(e) => handleRemoveFile(row.id, e)}
-                          className="p-1 rounded text-[var(--muted)] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
-                          title="Remove file"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        {/* UTR / Account */}
+                        <td className="py-3 px-4 align-middle font-mono text-[11px] text-[var(--muted)] max-w-[130px]">
+                          {stage === "stage2_complete" ? (
+                            <input
+                              type="text"
+                              value={row.extracted_utr || ""}
+                              placeholder="UTR / Ref ID"
+                              onChange={(e) => handleRowUpdate(row.id, { extracted_utr: e.target.value })}
+                              onFocus={() => handleRowInteraction(row.id)}
+                              className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] font-mono text-[11px] text-[var(--foreground)] focus:ring-1 focus:ring-[var(--primary)] outline-none max-w-[120px]"
+                            />
+                          ) : (
+                            <span>••••••••••••</span>
+                          )}
+                        </td>
+
+                        {/* Remove Button */}
+                        <td className="py-3 px-4 align-middle text-center">
+                          <button
+                            type="button"
+                            onClick={(e) => handleRemoveFile(row.id, e)}
+                            className="p-1.5 rounded text-[var(--muted)] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer"
+                            title="Remove file"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
@@ -1191,9 +1482,14 @@ export default function QuickPage() {
 
             {/* Export Excel Action Bar in Stage 2 Complete */}
             {stage === "stage2_complete" && (
-              <div className="p-4 bg-[var(--card-muted)] border-t border-[var(--border)] flex items-center justify-between">
-                <div className="text-xs text-[var(--muted)]">
-                  Full extraction complete. Ready to download clean Excel spreadsheet.
+              <div className="p-4 bg-[var(--card-muted)] border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-[var(--foreground)]">
+                    Full extraction complete. Ready to download clean Excel spreadsheet.
+                  </div>
+                  <div className="text-[11px] text-[var(--muted)] italic mt-0.5">
+                    By downloading, you confirm you’ve reviewed the entries above.
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -1212,7 +1508,7 @@ export default function QuickPage() {
                       }));
                     downloadQuickExcel(validRows);
                   }}
-                  className="btn-theme-accent text-xs px-4 py-2 rounded-lg font-bold flex items-center gap-2 cursor-pointer shadow-sm"
+                  className="btn-theme-accent text-xs px-4 py-2 rounded-lg font-bold flex items-center gap-2 cursor-pointer shadow-sm shrink-0"
                 >
                   <FileSpreadsheet className="w-4 h-4" />
                   <span>Download Quick Excel</span>
