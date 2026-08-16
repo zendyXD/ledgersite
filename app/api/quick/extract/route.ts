@@ -55,8 +55,16 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Server-Side Payment Boundary & Development Bypass Check
-    const isDevBypass = process.env.QUICK_MODE_DEV_BYPASS_PAYMENT === "true";
+    const rawBypassEnv = process.env.QUICK_MODE_DEV_BYPASS_PAYMENT;
+    const isDevBypass = String(rawBypassEnv || "").trim().toLowerCase() === "true";
     const paymentToken = request.headers.get("x-payment-token");
+
+    console.log("[QUICK_MODE_PAYMENT_CHECK_DEBUG]", {
+      rawEnvValue: rawBypassEnv === undefined ? "undefined" : JSON.stringify(rawBypassEnv),
+      typeOfRawEnvValue: typeof rawBypassEnv,
+      isDevBypass,
+      hasPaymentToken: Boolean(paymentToken)
+    });
 
     if (!isDevBypass && !paymentToken) {
       return NextResponse.json(
@@ -65,7 +73,12 @@ export async function POST(request: NextRequest) {
           stage: "stage2",
           code: "PAYMENT_REQUIRED",
           message: "Payment required for full extraction. Stage 2 access denied.",
-          retryable: false
+          retryable: false,
+          debug: {
+            rawEnvValue: rawBypassEnv === undefined ? "undefined" : String(rawBypassEnv),
+            typeOfRawEnvValue: typeof rawBypassEnv,
+            isDevBypass
+          }
         },
         { status: 402 }
       );
