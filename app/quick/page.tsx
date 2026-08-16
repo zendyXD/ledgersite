@@ -18,14 +18,26 @@ import {
   Plus,
   Lock,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  ChevronDown,
+  Terminal,
+  RefreshCw
 } from "lucide-react";
-import { TesseractPool, runClientOcr } from "@/lib/ocr";
+import { TesseractPool, runClientOcr, OcrDiagnostics } from "@/lib/ocr";
 import { downloadQuickExcel } from "@/lib/excel";
+
+export type QuickApiErrorResponse = {
+  ok: false;
+  stage: "ocr" | "stage2";
+  code: string;
+  message: string;
+  httpStatus?: number;
+  retryable?: boolean;
+};
 
 export type QuickFileRow = {
   id: string;
-  file: File;
+  file: File; // Retained original File object in memory
   original_name: string;
   previewUrl: string | null;
   fileType: string;
@@ -37,6 +49,7 @@ export type QuickFileRow = {
   ocrRoughAmount?: number | null;
   ocrDetectedDate?: string | null;
   ocrErrorMessage?: string;
+  diagnostics?: OcrDiagnostics;
 
   // Stage 2: AI Extraction State
   extractStatus: "queued" | "extracting" | "ready" | "needs_review" | "failed";
@@ -48,6 +61,7 @@ export type QuickFileRow = {
   guessed_type?: "income" | "expense" | null;
   extraction_confidence?: Record<string, string>;
   extractErrorMessage?: string;
+  errorDetail?: QuickApiErrorResponse;
 };
 
 const MAX_BATCH_SIZE = 50;
@@ -68,10 +82,13 @@ export default function QuickPage() {
   const [warningMessage, setWarningMessage] = useState<string>("");
   const [stage, setStage] = useState<"stage1_ocr" | "stage1_complete" | "stage2_extracting" | "stage2_complete">("stage1_ocr");
   const [stage2Error, setStage2Error] = useState<string>("");
+  const [expandedDiagnostics, setExpandedDiagnostics] = useState<Record<string, boolean>>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeUrlsRef = useRef<Set<string>>(new Set());
   const ocrPoolRef = useRef<TesseractPool | null>(null);
+
+  const isDev = process.env.NODE_ENV === "development";
 
   // Lazy pool getter
   const getOcrPool = () => {
@@ -81,7 +98,7 @@ export default function QuickPage() {
     return ocrPoolRef.current;
   };
 
-  // Terminate workers on unmount
+  // Terminate workers on unmount & cleanup preview URLs
   useEffect(() => {
     const activeUrls = activeUrlsRef.current;
     return () => {
@@ -100,6 +117,10 @@ export default function QuickPage() {
     const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  };
+
+  const toggleDiagnostics = (id: string) => {
+    setExpandedDiagnostics((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   // ----------------------------------------------------
@@ -131,13 +152,22 @@ export default function QuickPage() {
                 ocrStatus: "completed",
                 ocrHasText: res.hasText,
                 ocrRoughAmount: res.roughAmount,
-                ocrDetectedDate: res.detectedDate
+                ocrDetectedDate: res.detectedDate,
+                diagnostics: res.diagnostics
               };
             } else {
               return {
                 ...r,
                 ocrStatus: "failed",
-                ocrErrorMessage: res.error || "OCR failed"
+                ocrErrorMessage: res.error || "OCR failed",
+                diagnostics: res.diagnostics,
+                errorDetail: {
+                  ok: false,
+                  stage: "ocr",
+                  code: "OCR_EXECUTION_FAILED",
+                  message: res.error || "OCR failed to process image text.",
+                  retryable: true
+                }
               };
             }
           })
@@ -171,6 +201,16 @@ export default function QuickPage() {
     const formData = new FormData();
     formData.append("file", file);
 
+    if (isDev) {
+      console.log("[QuickMode Stage2 Client Dispatch]", {
+        id,
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        hasFileInFormData: formData.has("file")
+      });
+    }
+
     try {
       const res = await fetch("/api/quick/extract", {
         method: "POST",
@@ -179,17 +219,37 @@ export default function QuickPage() {
 
       const data = await res.json();
 
-      if (!res.ok) {
+      if (isDev) {
+        console.log("[QuickMode Stage2 Client Response]", {
+          id,
+          fileName: file.name,
+          httpStatus: res.status,
+          responseBody: data
+        });
+      }
+
+      if (!res.ok || !data.ok) {
         if (res.status === 402) {
           setStage2Error("Payment required to unlock full extraction.");
         }
+        
+        const errDetail: QuickApiErrorResponse = {
+          ok: false,
+          stage: "stage2",
+          code: data?.code || "EXTRACTION_FAILED",
+          message: data?.message || "Extraction failed for this file",
+          httpStatus: res.status,
+          retryable: data?.retryable ?? true
+        };
+
         setFiles((prev) =>
           prev.map((row) =>
             row.id === id
               ? {
                   ...row,
                   extractStatus: "failed",
-                  extractErrorMessage: data?.message || "Extraction failed"
+                  extractErrorMessage: errDetail.message,
+                  errorDetail: errDetail
                 }
               : row
           )
@@ -221,25 +281,36 @@ export default function QuickPage() {
                 extracted_utr: data.extracted_utr ?? null,
                 guessed_category: data.guessed_category ?? null,
                 guessed_type: data.guessed_type ?? "expense",
-                extraction_confidence: data.extraction_confidence ?? {}
+                extraction_confidence: data.extraction_confidence ?? {},
+                errorDetail: undefined
               }
             : row
         )
       );
-    } catch (err) {
+    } catch (err: any) {
+      const errDetail: QuickApiErrorResponse = {
+        ok: false,
+        stage: "stage2",
+        code: "NETWORK_ERROR",
+        message: err?.message || "Network error during extraction",
+        httpStatus: 0,
+        retryable: true
+      };
+
       setFiles((prev) =>
         prev.map((row) =>
           row.id === id
             ? {
                 ...row,
                 extractStatus: "failed",
-                extractErrorMessage: "Network error during extraction"
+                extractErrorMessage: errDetail.message,
+                errorDetail: errDetail
               }
             : row
         )
       );
     }
-  }, []);
+  }, [isDev]);
 
   // Stage 2 Queue Runner (Max 3 Workers)
   useEffect(() => {
@@ -262,7 +333,6 @@ export default function QuickPage() {
       });
     }
 
-    // Check if all Stage 2 jobs complete
     if (files.length > 0 && files.every((f) => f.extractStatus === "ready" || f.extractStatus === "needs_review" || f.extractStatus === "failed")) {
       setStage("stage2_complete");
     }
@@ -274,6 +344,21 @@ export default function QuickPage() {
     setFiles((prev) =>
       prev.map((r) => (r.ocrStatus === "completed" ? { ...r, extractStatus: "queued" } : r))
     );
+  };
+
+  const handleRetryRow = (id: string) => {
+    setFiles((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        if (r.ocrStatus === "failed") {
+          return { ...r, ocrStatus: "idle", ocrErrorMessage: undefined, errorDetail: undefined };
+        }
+        return { ...r, extractStatus: "queued", extractErrorMessage: undefined, errorDetail: undefined };
+      })
+    );
+    if (stage === "stage2_complete") {
+      setStage("stage2_extracting");
+    }
   };
 
   // ----------------------------------------------------
@@ -311,7 +396,14 @@ export default function QuickPage() {
           fileSize: f.size,
           ocrStatus: "failed",
           ocrErrorMessage: `File too large (max ${MAX_FILE_SIZE_MB}MB)`,
-          extractStatus: "failed"
+          extractStatus: "failed",
+          errorDetail: {
+            ok: false,
+            stage: "ocr",
+            code: "FILE_TOO_LARGE",
+            message: `File exceeds maximum allowed size of ${MAX_FILE_SIZE_MB}MB.`,
+            retryable: false
+          }
         };
       }
 
@@ -325,7 +417,14 @@ export default function QuickPage() {
           fileSize: f.size,
           ocrStatus: "failed",
           ocrErrorMessage: "PDF extraction deferred — please upload JPG, PNG, or WEBP images",
-          extractStatus: "failed"
+          extractStatus: "failed",
+          errorDetail: {
+            ok: false,
+            stage: "ocr",
+            code: "UNSUPPORTED_PDF",
+            message: "PDF format deferred — upload JPG, PNG, or WEBP images.",
+            retryable: false
+          }
         };
       }
 
@@ -339,7 +438,14 @@ export default function QuickPage() {
           fileSize: f.size,
           ocrStatus: "failed",
           ocrErrorMessage: "HEIC format not supported — use JPG, PNG, or WEBP",
-          extractStatus: "failed"
+          extractStatus: "failed",
+          errorDetail: {
+            ok: false,
+            stage: "ocr",
+            code: "UNSUPPORTED_HEIC",
+            message: "HEIC format not supported — convert to JPG, PNG, or WEBP.",
+            retryable: false
+          }
         };
       }
 
@@ -353,7 +459,14 @@ export default function QuickPage() {
           fileSize: f.size,
           ocrStatus: "failed",
           ocrErrorMessage: "Unsupported format (JPG/PNG/WEBP only)",
-          extractStatus: "failed"
+          extractStatus: "failed",
+          errorDetail: {
+            ok: false,
+            stage: "ocr",
+            code: "UNSUPPORTED_MIME",
+            message: "Unsupported file format (JPG, PNG, WEBP supported).",
+            retryable: false
+          }
         };
       }
 
@@ -362,7 +475,7 @@ export default function QuickPage() {
 
       return {
         id: fileId,
-        file: f,
+        file: f, // Preserves original File reference
         original_name: f.name,
         previewUrl,
         fileType: f.type,
@@ -482,6 +595,11 @@ export default function QuickPage() {
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary)]">
                   Session Workspace
                 </span>
+                {isDev && (
+                  <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                    DEV DIAGNOSTICS ACTIVE
+                  </span>
+                )}
               </div>
               <p className="text-xs text-[var(--muted)] mt-0.5">
                 Two-stage payment screenshot processing for fast Excel export
@@ -772,9 +890,8 @@ export default function QuickPage() {
                   {files.map((row) => (
                     <tr
                       key={row.id}
-                      className="hover:bg-[var(--card-muted)]/50 transition-colors group"
+                      className="hover:bg-[var(--card-muted)]/50 transition-colors group flex-col"
                     >
-                      {/* Preview Thumbnail */}
                       <td className="py-3 px-4 align-middle">
                         {row.previewUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -798,6 +915,19 @@ export default function QuickPage() {
                         <div className="text-[10px] text-[var(--muted)]">
                           {formatFileSize(row.fileSize)}
                         </div>
+
+                        {/* Dev Diagnostics Toggle Button */}
+                        {isDev && row.diagnostics && (
+                          <button
+                            type="button"
+                            onClick={() => toggleDiagnostics(row.id)}
+                            className="text-[9px] font-mono text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 mt-1"
+                          >
+                            <Terminal className="w-3 h-3" />
+                            <span>{expandedDiagnostics[row.id] ? "Hide Diagnostics" : "Inspect Diagnostics"}</span>
+                            <ChevronDown className={`w-3 h-3 transition-transform ${expandedDiagnostics[row.id] ? "rotate-180" : ""}`} />
+                          </button>
+                        )}
                       </td>
 
                       {/* Per-File Status Badge */}
@@ -940,6 +1070,123 @@ export default function QuickPage() {
                   ))}
                 </tbody>
               </table>
+
+              {/* Dev Diagnostics Expandable Panels */}
+              {isDev && files.some((r) => expandedDiagnostics[r.id]) && (
+                <div className="p-4 bg-slate-900 text-slate-200 border-t border-slate-800 text-xs font-mono flex flex-col gap-4">
+                  <div className="font-bold text-purple-400 flex items-center gap-2">
+                    <Terminal className="w-4 h-4" />
+                    <span>Stage 1 Dev Diagnostics Inspection Panel</span>
+                  </div>
+                  {files.filter((r) => expandedDiagnostics[r.id]).map((row) => {
+                    const diag = row.diagnostics;
+                    return (
+                      <div key={`diag-${row.id}`} className="p-3 bg-slate-950 rounded-lg border border-slate-800 flex flex-col gap-2">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-1 text-slate-300">
+                          <strong>File: {row.original_name}</strong>
+                          <span className={diag?.ocrSuccess ? "text-emerald-400" : "text-red-400"}>
+                            {diag?.ocrSuccess ? "OCR SUCCESS" : "OCR FAILED"}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                          <div>
+                            <span className="text-slate-400 block mb-1">Date Candidates:</span>
+                            <div className="bg-slate-900 p-2 rounded max-h-24 overflow-y-auto">
+                              {diag?.dateCandidates.length ? (
+                                diag.dateCandidates.map((d, i) => (
+                                  <div key={i}>Raw: {d} → Normalized: {diag.normalizedDateCandidates[i]}</div>
+                                ))
+                              ) : (
+                                <span className="text-slate-500 italic">No date candidates found</span>
+                              )}
+                            </div>
+                            <div className="mt-1 text-teal-400 font-bold">
+                              Selected Date: {diag?.selectedDate || "None"}
+                            </div>
+                          </div>
+
+                          <div>
+                            <span className="text-slate-400 block mb-1">Accepted Amount Candidates:</span>
+                            <div className="bg-slate-900 p-2 rounded max-h-24 overflow-y-auto">
+                              {diag?.amountCandidates.length ? (
+                                diag.amountCandidates.map((a, i) => (
+                                  <div key={i} className="text-emerald-400">Accepted: {a.raw} (₹{a.value})</div>
+                                ))
+                              ) : (
+                                <span className="text-slate-500 italic">No accepted amounts</span>
+                              )}
+                            </div>
+                            <div className="mt-1 text-purple-400 font-bold">
+                              Selected Total: {diag?.selectedRoughAmount != null ? `₹${diag.selectedRoughAmount}` : "null (Estimate unavailable)"}
+                            </div>
+                          </div>
+                        </div>
+
+                        {diag?.rejectedAmountCandidates.length ? (
+                          <div>
+                            <span className="text-slate-400 block mb-1">Rejected Candidates & Reasons:</span>
+                            <div className="bg-slate-900 p-2 rounded max-h-24 overflow-y-auto text-[10px] text-amber-300">
+                              {diag.rejectedAmountCandidates.map((r, i) => (
+                                <div key={i}>Candidate: "{r.raw}" → Reason: {r.reason}</div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div>
+                          <span className="text-slate-400 block mb-1">Raw Tesseract OCR Text Snippet:</span>
+                          <pre className="bg-slate-900 p-2 rounded text-[10px] max-h-32 overflow-y-auto text-slate-300 whitespace-pre-wrap">
+                            {diag?.rawText || "No text extracted"}
+                          </pre>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Inline Expandable Error Drawers */}
+              {files.some((r) => r.ocrStatus === "failed" || r.extractStatus === "failed") && (
+                <div className="p-4 bg-red-950/20 border-t border-red-500/20 flex flex-col gap-2">
+                  <div className="font-bold text-red-600 dark:text-red-400 text-xs flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span>Row Failure Details & Diagnostics</span>
+                  </div>
+
+                  {files.filter((r) => r.ocrStatus === "failed" || r.extractStatus === "failed").map((row) => (
+                    <div key={`err-${row.id}`} className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between font-semibold text-red-700 dark:text-red-400">
+                        <span>{row.original_name} — Stage: {row.errorDetail?.stage?.toUpperCase() || (row.ocrStatus === "failed" ? "STAGE 1 OCR" : "STAGE 2 EXTRACTION")}</span>
+                        {row.errorDetail?.retryable && (
+                          <button
+                            type="button"
+                            onClick={() => handleRetryRow(row.id)}
+                            className="px-2 py-0.5 rounded bg-red-600 text-white font-bold text-[10px] flex items-center gap-1 hover:bg-red-700 transition-colors"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Retry Row</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* User Safe Message */}
+                      <p className="text-xs text-red-800 dark:text-red-300">
+                        {row.extractErrorMessage || row.ocrErrorMessage || "Processing failed for this screenshot."}
+                      </p>
+
+                      {/* Dev Detailed Error Info */}
+                      {isDev && row.errorDetail && (
+                        <div className="mt-1 p-2 bg-slate-900 text-slate-200 rounded-lg text-[11px] font-mono flex flex-col gap-1">
+                          <div><strong>Code:</strong> {row.errorDetail.code}</div>
+                          {row.errorDetail.httpStatus ? <div><strong>HTTP Status:</strong> {row.errorDetail.httpStatus}</div> : null}
+                          <div><strong>Sanitized Error:</strong> {row.errorDetail.message}</div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Export Excel Action Bar in Stage 2 Complete */}

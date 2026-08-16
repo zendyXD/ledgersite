@@ -1,5 +1,17 @@
 import { createWorker, Worker } from "tesseract.js";
 
+export type OcrDiagnostics = {
+  originalFileName?: string;
+  ocrSuccess: boolean;
+  rawText: string;
+  dateCandidates: string[];
+  normalizedDateCandidates: string[];
+  amountCandidates: { raw: string; value: number }[];
+  rejectedAmountCandidates: { raw: string; reason: string }[];
+  selectedRoughAmount: number | null;
+  selectedDate: string | null;
+};
+
 export type Stage1OcrResult = {
   success: boolean;
   hasText: boolean;
@@ -7,6 +19,7 @@ export type Stage1OcrResult = {
   detectedDate: string | null;
   error?: string;
   rawText?: string;
+  diagnostics?: OcrDiagnostics;
 };
 
 /**
@@ -25,20 +38,17 @@ export class TesseractPool {
       throw new Error("Tesseract pool has been terminated");
     }
 
-    // Reuse existing idle worker
     if (this.idleWorkers.length > 0) {
       const worker = this.idleWorkers.pop()!;
       return worker;
     }
 
-    // Create new worker if under max limit
     if (this.activeCount < this.maxWorkers) {
       this.activeCount++;
       const worker = await createWorker("eng");
       return worker;
     }
 
-    // Wait for an idle worker if max workers reached
     return new Promise((resolve, reject) => {
       const checkInterval = setInterval(() => {
         if (this.isTerminated) {
@@ -77,92 +87,172 @@ export class TesseractPool {
 }
 
 /**
- * Safely parses raw OCR text into Stage 1 rough metrics.
- * Does not sum numbers or guess uncertain values. Returns null for amount if uncertain.
+ * Safely parses raw OCR text into Stage 1 rough metrics and dev diagnostics.
+ * Scans all candidates, applies strict rejection filters, and returns null if uncertain.
  */
-export function parseStage1Metrics(rawText: string): {
+export function parseStage1Metrics(
+  rawText: string,
+  fileName?: string
+): {
   hasText: boolean;
   roughAmount: number | null;
   detectedDate: string | null;
+  diagnostics: OcrDiagnostics;
 } {
+  const emptyDiag: OcrDiagnostics = {
+    originalFileName: fileName,
+    ocrSuccess: false,
+    rawText: rawText || "",
+    dateCandidates: [],
+    normalizedDateCandidates: [],
+    amountCandidates: [],
+    rejectedAmountCandidates: [],
+    selectedRoughAmount: null,
+    selectedDate: null
+  };
+
   if (!rawText || rawText.trim().length < 5) {
-    return { hasText: false, roughAmount: null, detectedDate: null };
+    return { hasText: false, roughAmount: null, detectedDate: null, diagnostics: emptyDiag };
   }
 
   const cleanText = rawText.replace(/\r\n/g, "\n");
+  const dateCandidates: string[] = [];
+  const normalizedDateCandidates: string[] = [];
 
-  // 1. Date Detection
-  let detectedDate: string | null = null;
-  const isoMatch = cleanText.match(/\b(20\d\d)[-/.](0[1-9]|1[0-2])[-/.](0[1-9]|[12]\d|3[01])\b/);
-  if (isoMatch) {
-    detectedDate = `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
-  } else {
-    const dmyMatch = cleanText.match(/\b(0[1-9]|[12]\d|3[01])[-/.](0[1-9]|1[0-2])[-/.](20\d\d)\b/);
-    if (dmyMatch) {
-      detectedDate = `${dmyMatch[3]}-${dmyMatch[2].padStart(2, "0")}-${dmyMatch[1].padStart(2, "0")}`;
-    } else {
-      const monthNames: Record<string, string> = {
-        jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
-        jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12"
-      };
-      const textDateMatch = cleanText.match(/\b(0[1-9]|[12]\d|3[01])\s+([A-Za-z]{3,9})\s+(20\d\d)\b/i);
-      if (textDateMatch) {
-        const monKey = textDateMatch[2].substring(0, 3).toLowerCase();
-        if (monthNames[monKey]) {
-          detectedDate = `${textDateMatch[3]}-${monthNames[monKey]}-${textDateMatch[1].padStart(2, "0")}`;
-        }
-      }
+  // 1. Date Candidate Scanning & Consistency Normalization
+  // ISO format: YYYY-MM-DD
+  const isoMatches = Array.from(cleanText.matchAll(/\b(20\d\d)[-/.](0[1-9]|1[0-2])[-/.](0[1-9]|[12]\d|3[01])\b/g));
+  for (const m of isoMatches) {
+    dateCandidates.push(m[0]);
+    normalizedDateCandidates.push(`${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`);
+  }
+
+  // Indian numeric format: DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatches = Array.from(cleanText.matchAll(/\b(0[1-9]|[12]\d|3[01])[-/.](0[1-9]|1[0-2])[-/.](20\d\d)\b/g));
+  for (const m of dmyMatches) {
+    dateCandidates.push(m[0]);
+    normalizedDateCandidates.push(`${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`);
+  }
+
+  // Text month format: 14 Aug 2026 / 14 August 2026
+  const monthNames: Record<string, string> = {
+    jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+    jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12"
+  };
+  const textDateMatches = Array.from(cleanText.matchAll(/\b(0[1-9]|[12]\d|3[01])\s+([A-Za-z]{3,9})\s+(20\d\d)\b/gi));
+  for (const m of textDateMatches) {
+    const monKey = m[2].substring(0, 3).toLowerCase();
+    if (monthNames[monKey]) {
+      dateCandidates.push(m[0]);
+      normalizedDateCandidates.push(`${m[3]}-${monthNames[monKey]}-${m[1].padStart(2, "0")}`);
     }
   }
 
-  // 2. Rough Amount Detection
-  const validAmounts: number[] = [];
+  // Deduplicate dates
+  const uniqueNormalizedDates = Array.from(new Set(normalizedDateCandidates)).sort();
+  const selectedDate = uniqueNormalizedDates.length > 0 ? uniqueNormalizedDates[0] : null;
 
-  // Match explicit currency symbols ₹, Rs., Rs, INR followed by amount
-  const currencyMatches = Array.from(
-    cleanText.matchAll(/(?:₹|Rs\.?|INR)\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?|[0-9]+(?:\.[0-9]{2})?)/gi)
+  // 2. Amount Candidate Scanning & Strict Rejection Classification
+  const amountCandidates: { raw: string; value: number }[] = [];
+  const rejectedAmountCandidates: { raw: string; reason: string }[] = [];
+
+  // Match all numbers / currency-like tokens
+  const allNumberMatches = Array.from(
+    cleanText.matchAll(/(?:₹|Rs\.?|INR)?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?|[0-9]+(?:\.[0-9]{2})?)/gi)
   );
 
-  for (const m of currencyMatches) {
+  for (const m of allNumberMatches) {
+    const rawMatch = m[0].trim();
     const rawVal = m[1].replace(/,/g, "");
     const num = parseFloat(rawVal);
-    // Ignore UTRs (12 digit numbers), phone numbers (10 digits), year numbers, or unreasonable amounts (> 50L)
-    if (!isNaN(num) && num > 0 && num < 5000000 && !/^\d{10,12}$/.test(rawVal)) {
-      validAmounts.push(num);
-    }
-  }
 
-  // Secondary: Match keywords "Paid", "Total", "Amount", "Debited", "Credited"
-  if (validAmounts.length === 0) {
-    const keywordMatches = Array.from(
-      cleanText.matchAll(/(?:Paid|Total|Amount|Debited|Credited)\s*[:\-]?\s*(?:₹|Rs\.?|INR)?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?|[0-9]+(?:\.[0-9]{2})?)/gi)
+    if (!rawMatch || isNaN(num) || num <= 0) continue;
+
+    // Check Rejection Criteria:
+    // a. 12-digit UTR / UPI Reference ID
+    if (/^\d{12}$/.test(rawVal)) {
+      rejectedAmountCandidates.push({ raw: rawMatch, reason: "Excluded 12-digit UTR/UPI reference ID" });
+      continue;
+    }
+
+    // b. 10-digit Phone Number (India 6-9 prefix)
+    if (/^[6-9]\d{9}$/.test(rawVal)) {
+      rejectedAmountCandidates.push({ raw: rawMatch, reason: "Excluded 10-digit mobile phone number" });
+      continue;
+    }
+
+    // c. Year number (e.g. 2024, 2025, 2026)
+    if (/^20\d\d$/.test(rawVal)) {
+      rejectedAmountCandidates.push({ raw: rawMatch, reason: "Excluded 4-digit year number" });
+      continue;
+    }
+
+    // d. Timestamp pattern nearby (e.g. 14:25:30)
+    if (new RegExp(`\\b${rawVal}:\\d{2}\\b|\\b\\d{2}:${rawVal}\\b`).test(cleanText)) {
+      rejectedAmountCandidates.push({ raw: rawMatch, reason: "Excluded timestamp fragment" });
+      continue;
+    }
+
+    // e. Account number fragment (e.g. XXXXX1234 or A/C 1234)
+    if (new RegExp(`(?:x{2,}|a/c|account)\\s*[:\\-]?\\s*${rawVal}`, "i").test(cleanText)) {
+      rejectedAmountCandidates.push({ raw: rawMatch, reason: "Excluded masked account number fragment" });
+      continue;
+    }
+
+    // f. Unreasonable amount (> 5,000,000)
+    if (num >= 5000000) {
+      rejectedAmountCandidates.push({ raw: rawMatch, reason: "Excluded amount exceeding reasonable limit" });
+      continue;
+    }
+
+    // Acceptance condition: Must have currency prefix (₹/Rs/INR) OR explicit keyword (Paid/Total/Amount/Debited)
+    const hasCurrencyPrefix = /(?:₹|Rs\.?|INR)/i.test(rawMatch);
+    const hasKeywordContext = /(?:Paid|Total|Amount|Debited|Credited)\s*[:\-]?\s*(?:₹|Rs\.?|INR)?\s*/i.test(
+      cleanText.substring(Math.max(0, cleanText.indexOf(rawMatch) - 20), cleanText.indexOf(rawMatch) + rawMatch.length + 5)
     );
-    for (const m of keywordMatches) {
-      const rawVal = m[1].replace(/,/g, "");
-      const num = parseFloat(rawVal);
-      if (!isNaN(num) && num > 0 && num < 5000000 && !/^\d{10,12}$/.test(rawVal)) {
-        validAmounts.push(num);
+
+    if (hasCurrencyPrefix || hasKeywordContext) {
+      // Prevent duplicate additions
+      if (!amountCandidates.some((c) => c.value === num)) {
+        amountCandidates.push({ raw: rawMatch, value: num });
       }
+    } else {
+      rejectedAmountCandidates.push({ raw: rawMatch, reason: "Excluded number lacking currency symbol or payment keyword context" });
     }
   }
 
-  let roughAmount: number | null = null;
-  if (validAmounts.length === 1) {
-    roughAmount = validAmounts[0];
-  } else if (validAmounts.length > 1) {
-    const first = validAmounts[0];
-    const allSame = validAmounts.every((v) => v === first);
-    if (allSame) {
-      roughAmount = first;
+  // Evaluate final rough amount
+  let selectedRoughAmount: number | null = null;
+  if (amountCandidates.length === 1) {
+    selectedRoughAmount = amountCandidates[0].value;
+  } else if (amountCandidates.length > 1) {
+    const firstVal = amountCandidates[0].value;
+    const allIdentical = amountCandidates.every((c) => c.value === firstVal);
+    if (allIdentical) {
+      selectedRoughAmount = firstVal;
     } else {
-      roughAmount = null; // Uncertain due to conflicting amounts
+      // Ambiguous multiple conflicting amounts -> return null ("Estimate unavailable")
+      selectedRoughAmount = null;
     }
   }
+
+  const diagnostics: OcrDiagnostics = {
+    originalFileName: fileName,
+    ocrSuccess: true,
+    rawText,
+    dateCandidates,
+    normalizedDateCandidates: uniqueNormalizedDates,
+    amountCandidates,
+    rejectedAmountCandidates,
+    selectedRoughAmount,
+    selectedDate
+  };
 
   return {
     hasText: true,
-    roughAmount,
-    detectedDate
+    roughAmount: selectedRoughAmount,
+    detectedDate: selectedDate,
+    diagnostics
   };
 }
 
@@ -182,13 +272,14 @@ export async function runClientOcr(
       const result = await worker.recognize(fileUrl);
       URL.revokeObjectURL(fileUrl);
 
-      const parsed = parseStage1Metrics(result.data.text);
+      const parsed = parseStage1Metrics(result.data.text, file.name);
       return {
         success: true,
         hasText: parsed.hasText,
         roughAmount: parsed.roughAmount,
         detectedDate: parsed.detectedDate,
-        rawText: result.data.text
+        rawText: result.data.text,
+        diagnostics: parsed.diagnostics
       };
     } catch (err: unknown) {
       URL.revokeObjectURL(fileUrl);
@@ -198,7 +289,18 @@ export async function runClientOcr(
         hasText: false,
         roughAmount: null,
         detectedDate: null,
-        error: msg
+        error: msg,
+        diagnostics: {
+          originalFileName: file.name,
+          ocrSuccess: false,
+          rawText: "",
+          dateCandidates: [],
+          normalizedDateCandidates: [],
+          amountCandidates: [],
+          rejectedAmountCandidates: [],
+          selectedRoughAmount: null,
+          selectedDate: null
+        }
       };
     } finally {
       if (worker) {
@@ -212,7 +314,18 @@ export async function runClientOcr(
       hasText: false,
       roughAmount: null,
       detectedDate: null,
-      error: msg
+      error: msg,
+      diagnostics: {
+        originalFileName: file.name,
+        ocrSuccess: false,
+        rawText: "",
+        dateCandidates: [],
+        normalizedDateCandidates: [],
+        amountCandidates: [],
+        rejectedAmountCandidates: [],
+        selectedRoughAmount: null,
+        selectedDate: null
+      }
     };
   }
 }

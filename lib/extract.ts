@@ -62,15 +62,34 @@ Return a JSON object with EXACTLY the following fields:
     }
   };
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(requestBody)
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+    const rawErrorText = await response.text();
+    // Redact any API key from error text before logging or throwing
+    const sanitizedErrorText = rawErrorText.replace(new RegExp(apiKey, "g"), "[REDACTED_API_KEY]");
+    
+    if (process.env.NODE_ENV === "development") {
+      console.error("[Gemini API Error Diagnostics]", {
+        status: response.status,
+        statusText: response.statusText,
+        endpoint: "gemini-2.5-flash",
+        mimeType: mimeType || "image/jpeg",
+        error: sanitizedErrorText
+      });
+    }
+
+    const error = Object.assign(new Error(`Gemini API error (HTTP ${response.status}): ${sanitizedErrorText}`), {
+      status: response.status,
+      sanitizedBody: sanitizedErrorText
+    });
+    throw error;
   }
 
   const result = await response.json();

@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractFromImage } from "@/lib/extract";
 
-// Basic in-memory IP rate limiter for MVP protection.
-// Note: In Vercel serverless deployments, in-memory state is per-instance and not globally consistent.
 const ipMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
-const MAX_REQUESTS_PER_WINDOW = 60; // 60 extractions/min per IP
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const MAX_REQUESTS_PER_WINDOW = 60;
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
@@ -34,6 +32,8 @@ const ALLOWED_IMAGE_TYPES = new Set([
 ]);
 
 export async function POST(request: NextRequest) {
+  const isDev = process.env.NODE_ENV === "development";
+
   try {
     // 1. IP Rate Limiting Check
     const clientIp =
@@ -43,67 +43,121 @@ export async function POST(request: NextRequest) {
 
     if (isRateLimited(clientIp)) {
       return NextResponse.json(
-        { message: "Rate limit exceeded. Please wait a moment before trying again." },
+        {
+          ok: false,
+          stage: "stage2",
+          code: "RATE_LIMIT_EXCEEDED",
+          message: "Rate limit exceeded. Please wait a moment before trying again.",
+          retryable: true
+        },
         { status: 429 }
       );
     }
 
-    // 1.5 Server-Side Payment Boundary & Development Bypass Check
+    // 2. Server-Side Payment Boundary & Development Bypass Check
     const isDevBypass = process.env.QUICK_MODE_DEV_BYPASS_PAYMENT === "true";
     const paymentToken = request.headers.get("x-payment-token");
 
     if (!isDevBypass && !paymentToken) {
       return NextResponse.json(
-        { message: "Payment required for full extraction. Stage 2 access denied." },
+        {
+          ok: false,
+          stage: "stage2",
+          code: "PAYMENT_REQUIRED",
+          message: "Payment required for full extraction. Stage 2 access denied.",
+          retryable: false
+        },
         { status: 402 }
       );
     }
 
-    // 2. Parse FormData
+    // 3. Parse FormData
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
 
     if (!file) {
-      return NextResponse.json({ message: "No file provided" }, { status: 400 });
+      return NextResponse.json(
+        {
+          ok: false,
+          stage: "stage2",
+          code: "NO_FILE_PROVIDED",
+          message: "No file provided in form data.",
+          retryable: false
+        },
+        { status: 400 }
+      );
     }
 
-    // 3. Validate File Size
+    if (isDev) {
+      console.log("[QuickExtract Server Log]", {
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        hasFile: Boolean(file)
+      });
+    }
+
+    // 4. Validate File Size
     if (file.size > MAX_FILE_SIZE_BYTES) {
       return NextResponse.json(
-        { message: "File exceeds 10MB limit" },
+        {
+          ok: false,
+          stage: "stage2",
+          code: "FILE_TOO_LARGE",
+          message: "File exceeds 10MB limit.",
+          retryable: false
+        },
         { status: 413 }
       );
     }
 
-    // 4. Validate File Type
+    // 5. Validate File Type
     const rawType = (file.type || "").toLowerCase();
 
     if (rawType === "image/heic" || rawType === "image/heif") {
       return NextResponse.json(
-        { message: "HEIC format not supported — please upload JPG, PNG, or WEBP" },
+        {
+          ok: false,
+          stage: "stage2",
+          code: "UNSUPPORTED_HEIC",
+          message: "HEIC format not supported — please upload JPG, PNG, or WEBP",
+          retryable: false
+        },
         { status: 400 }
       );
     }
 
     if (rawType === "application/pdf") {
       return NextResponse.json(
-        { message: "PDF extraction deferred — please upload JPG, PNG, or WEBP images" },
+        {
+          ok: false,
+          stage: "stage2",
+          code: "UNSUPPORTED_PDF",
+          message: "PDF extraction deferred — please upload JPG, PNG, or WEBP images",
+          retryable: false
+        },
         { status: 400 }
       );
     }
 
     if (!ALLOWED_IMAGE_TYPES.has(rawType)) {
       return NextResponse.json(
-        { message: "Unsupported file type. Please upload a JPG, PNG, or WEBP image." },
+        {
+          ok: false,
+          stage: "stage2",
+          code: "UNSUPPORTED_MIME_TYPE",
+          message: "Unsupported file type. Please upload a JPG, PNG, or WEBP image.",
+          retryable: false
+        },
         { status: 400 }
       );
     }
 
-    // 5. Convert File to Base64 in Memory
+    // 6. Convert File to Base64 in Memory
     const arrayBuffer = await file.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString("base64");
 
-    // 6. Call Gemini extractFromImage with a 25-second Timeout
+    // 7. Call Gemini extractFromImage with a 25-second Timeout
     let extractionResult: any;
     try {
       const timeoutPromise = new Promise((_, reject) =>
@@ -115,22 +169,35 @@ export async function POST(request: NextRequest) {
         timeoutPromise
       ]);
     } catch (err: any) {
-      console.error("[QuickExtract] AI Extraction Error:", err);
-      if (err?.message === "TIMED_OUT") {
-        return NextResponse.json(
-          { message: "AI extraction timed out (25-second limit)" },
-          { status: 504 }
-        );
+      const httpStatus = err?.status || (err?.message === "TIMED_OUT" ? 504 : 500);
+      const isTimeout = err?.message === "TIMED_OUT";
+
+      if (isDev) {
+        console.error("[QuickExtract Route Error Trace]", {
+          fileName: file.name,
+          httpStatus,
+          error: err?.sanitizedBody || err?.message || String(err)
+        });
       }
-      // Sanitized error response (no API keys or raw Gemini stack traces exposed)
+
       return NextResponse.json(
-        { message: "Extraction failed for this image" },
-        { status: 500 }
+        {
+          ok: false,
+          stage: "stage2",
+          code: isTimeout ? "TIMEOUT" : "EXTRACTION_FAILED",
+          message: isDev
+            ? (err?.sanitizedBody || err?.message || "Extraction failed")
+            : (isTimeout ? "AI extraction timed out (25-second limit)" : "Extraction failed for this image"),
+          httpStatus,
+          retryable: true
+        },
+        { status: httpStatus }
       );
     }
 
-    // 7. Return Sanitized JSON Response
+    // 8. Return Successful JSON Response
     return NextResponse.json({
+      ok: true,
       extracted_party: extractionResult?.extracted_party ?? null,
       extracted_amount: extractionResult?.extracted_amount ?? null,
       extracted_date: extractionResult?.extracted_date ?? null,
@@ -141,10 +208,19 @@ export async function POST(request: NextRequest) {
       extraction_confidence: extractionResult?.extraction_confidence ?? {}
     });
 
-  } catch (err) {
-    console.error("[QuickExtract] Route Server Catch Error:", err);
+  } catch (err: any) {
+    if (isDev) {
+      console.error("[QuickExtract Catch Error]", err);
+    }
     return NextResponse.json(
-      { message: "Server error processing file" },
+      {
+        ok: false,
+        stage: "stage2",
+        code: "SERVER_ERROR",
+        message: isDev ? (err?.message || "Server error processing file") : "Server error processing file",
+        httpStatus: 500,
+        retryable: true
+      },
       { status: 500 }
     );
   }
