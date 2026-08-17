@@ -856,32 +856,57 @@ const sortedPartyEntries = [...monthlyEntries].sort((a, b) => {
   return buffer;
 }
 
-export async function downloadQuickExcel(rows: any[]) {
+export type QuickExportSplitRow = {
+  name?: string;
+  amount?: number | null;
+};
+
+export type QuickExportRow = {
+  original_name?: string;
+  extracted_date?: string | null;
+  extracted_party?: string | null;
+  guessed_category?: string | null;
+  extracted_amount?: number | null;
+  splits?: QuickExportSplitRow[];
+};
+
+export async function downloadQuickExcel(rows: QuickExportRow[]) {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Quick Mode Export");
 
   sheet.columns = [
-    { header: "File Name", key: "original_name", width: 25 },
     { header: "Date", key: "extracted_date", width: 15 },
-    { header: "Party / Payee", key: "extracted_party", width: 25 },
-    { header: "Category", key: "guessed_category", width: 20 },
-    { header: "Type", key: "guessed_type", width: 15 },
+    { header: "Payee", key: "extracted_party", width: 25 },
     { header: "Amount (₹)", key: "extracted_amount", width: 15 },
-    { header: "UTR / Account", key: "extracted_utr", width: 25 },
+    { header: "Category", key: "guessed_category", width: 20 },
+    { header: "Source file", key: "original_name", width: 25 },
+    { header: "Note", key: "note", width: 20 },
   ];
 
   sheet.getRow(1).font = { bold: true };
 
   rows.forEach((r) => {
-    sheet.addRow({
-      original_name: r.original_name || "",
-      extracted_date: r.extracted_date || "",
-      extracted_party: r.extracted_party || "",
-      guessed_category: r.guessed_category || "",
-      guessed_type: r.guessed_type || "expense",
-      extracted_amount: r.extracted_amount || 0,
-      extracted_utr: r.extracted_utr || ""
-    });
+    if (r.splits && Array.isArray(r.splits) && r.splits.length > 0) {
+      r.splits.forEach((s) => {
+        sheet.addRow({
+          extracted_date: r.extracted_date || "",
+          extracted_party: s.name || r.extracted_party || "",
+          extracted_amount: s.amount || 0,
+          guessed_category: r.guessed_category || "",
+          original_name: r.original_name || "",
+          note: "Split payment"
+        });
+      });
+    } else {
+      sheet.addRow({
+        extracted_date: r.extracted_date || "",
+        extracted_party: r.extracted_party || "",
+        extracted_amount: r.extracted_amount || 0,
+        guessed_category: r.guessed_category || "",
+        original_name: r.original_name || "",
+        note: ""
+      });
+    }
   });
 
   sheet.getColumn("extracted_amount").numFmt = "₹#,##0.00";
@@ -890,3 +915,5 @@ export async function downloadQuickExcel(rows: any[]) {
   const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   saveAs(blob, `Quick_Mode_Export_${new Date().toISOString().split("T")[0]}.xlsx`);
 }
+
+

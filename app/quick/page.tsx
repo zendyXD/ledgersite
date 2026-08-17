@@ -24,10 +24,10 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Layers,
   Split,
-  UserCheck
+  UserCheck,
+  Check
 } from "lucide-react";
 import { TesseractPool, runClientOcr, OcrDiagnostics } from "@/lib/ocr";
 import { downloadQuickExcel } from "@/lib/excel";
@@ -39,6 +39,12 @@ export type QuickApiErrorResponse = {
   message: string;
   httpStatus?: number;
   retryable?: boolean;
+};
+
+export type QuickSplitItem = {
+  id: string;
+  name: string;
+  amount: number | null;
 };
 
 export type QuickFileRow = {
@@ -60,10 +66,11 @@ export type QuickFileRow = {
   // Stage 2: AI Extraction State
   extractStatus: "queued" | "extracting" | "ready" | "needs_review" | "failed";
   extracted_date?: string | null;
-  extracted_party?: string | null;
+  actual_recipient?: string | null; // Paid to account (actual bank recipient)
+  extracted_party?: string | null;   // Intended for (intended payee)
   guessed_category?: string | null;
   extracted_amount?: number | null;
-  extracted_utr?: string | null;
+  extracted_utr?: string | null;    // Internal identifier (retained ONLY client-side in memory for duplicate detection)
   guessed_type?: "income" | "expense" | null;
   extraction_confidence?: Record<string, string>;
   extractErrorMessage?: string;
@@ -74,12 +81,12 @@ export type QuickFileRow = {
   isCollapsed?: boolean;
   isRedirectingPayee?: boolean;
   isSplitting?: boolean;
-  splits?: Array<{ name: string; amount: number }>;
+  splits?: QuickSplitItem[];
 };
 
 const MAX_BATCH_SIZE = 50;
 const REVIEW_BATCH_SIZE = 10;
-const AUTO_COLLAPSE_DELAY_MS = 2500;
+const AUTO_COLLAPSE_DELAY_MS = 4000;
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_CONCURRENT_WORKERS = 3;
@@ -90,6 +97,26 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/png",
   "image/webp"
 ]);
+
+// Duplicate detection normalization helper
+const getNormalizedIdentifier = (utr?: string | null): string | null => {
+  if (!utr) return null;
+  const trimmed = utr.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!trimmed || trimmed === "UNKNOWN" || trimmed === "NULL" || trimmed === "UNDEFINED") {
+    return null;
+  }
+  return trimmed;
+};
+
+// Split validation helper
+const getRowSplitValidation = (row: QuickFileRow) => {
+  const parentAmount = row.extracted_amount || 0;
+  const splits = row.splits || [];
+  const allocated = splits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+  const remaining = parentAmount - allocated;
+  const isComplete = splits.length > 0 && Math.abs(remaining) < 0.01 && splits.every((s) => s.name.trim() !== "" && s.amount !== null && s.amount > 0);
+  return { parentAmount, allocated, remaining, isComplete };
+};
 
 export default function QuickPage() {
   const [files, setFiles] = useState<QuickFileRow[]>([]);
@@ -137,7 +164,7 @@ export default function QuickPage() {
     };
   }, []);
 
-  // Safe auto-collapse timer engine for active batch
+  // Delayed 4-second auto-collapse timer engine for active batch
   useEffect(() => {
     if (stage !== "stage2_complete") return;
 
@@ -228,9 +255,78 @@ export default function QuickPage() {
   const toggleSplitting = useCallback((rowId: string) => {
     handleRowInteraction(rowId);
     setFiles((prev) =>
-      prev.map((r) => (r.id === rowId ? { ...r, isSplitting: !r.isSplitting } : r))
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const nextIsSplitting = !r.isSplitting;
+        let nextSplits = r.splits;
+        if (nextIsSplitting && (!nextSplits || nextSplits.length === 0)) {
+          nextSplits = [
+            {
+              id: crypto.randomUUID(),
+              name: r.extracted_party || "",
+              amount: r.extracted_amount || null
+            }
+          ];
+        }
+        return {
+          ...r,
+          isSplitting: nextIsSplitting,
+          splits: nextSplits
+        };
+      })
     );
   }, [handleRowInteraction]);
+
+  const handleAddSplitPerson = (rowId: string) => {
+    handleRowInteraction(rowId);
+    setFiles((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const currentSplits = r.splits || [];
+        const newSplit: QuickSplitItem = {
+          id: crypto.randomUUID(),
+          name: "",
+          amount: null
+        };
+        return {
+          ...r,
+          splits: [...currentSplits, newSplit],
+          isEdited: true
+        };
+      })
+    );
+  };
+
+  const handleUpdateSplitPerson = (rowId: string, splitId: string, updates: Partial<QuickSplitItem>) => {
+    handleRowInteraction(rowId);
+    setFiles((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const currentSplits = r.splits || [];
+        return {
+          ...r,
+          splits: currentSplits.map((s) => (s.id === splitId ? { ...s, ...updates } : s)),
+          isEdited: true
+        };
+      })
+    );
+  };
+
+  const handleRemoveSplitPerson = (rowId: string, splitId: string) => {
+    handleRowInteraction(rowId);
+    setFiles((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const currentSplits = r.splits || [];
+        const updated = currentSplits.filter((s) => s.id !== splitId);
+        return {
+          ...r,
+          splits: updated,
+          isEdited: true
+        };
+      })
+    );
+  };
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 B";
@@ -315,6 +411,10 @@ export default function QuickPage() {
     }
   }, [files, stage]);
 
+  const setRowRef = useCallback((id: string, el: HTMLTableRowElement | HTMLDivElement | null) => {
+    rowRefs.current[id] = el;
+  }, []);
+
   // ----------------------------------------------------
   // Stage 2: Gemini Full Extraction Handler & Queue
   // ----------------------------------------------------
@@ -345,7 +445,7 @@ export default function QuickPage() {
           id,
           fileName: file.name,
           httpStatus: res.status,
-          responseBody: data
+          responseBody: { ok: data.ok, extracted_party: data.extracted_party, extracted_amount: data.extracted_amount }
         });
       }
 
@@ -385,7 +485,7 @@ export default function QuickPage() {
 
       const hasLowConfidence = Object.values(
         data.extraction_confidence || {}
-      ).some((val: any) => String(val).toLowerCase() === "low");
+      ).some((val: unknown) => String(val).toLowerCase() === "low");
 
       const finalStatus: "ready" | "needs_review" =
         missingCoreFields || hasLowConfidence ? "needs_review" : "ready";
@@ -396,6 +496,7 @@ export default function QuickPage() {
             ? {
                 ...row,
                 extractStatus: finalStatus,
+                actual_recipient: data.extracted_party ?? null,
                 extracted_party: data.extracted_party ?? null,
                 extracted_amount: data.extracted_amount ?? null,
                 extracted_date: data.extracted_date ?? null,
@@ -408,12 +509,12 @@ export default function QuickPage() {
             : row
         )
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errDetail: QuickApiErrorResponse = {
         ok: false,
         stage: "stage2",
         code: "NETWORK_ERROR",
-        message: err?.message || "Network error during extraction",
+        message: err instanceof Error ? err.message : "Network error during extraction",
         httpStatus: 0,
         retryable: true
       };
@@ -432,6 +533,7 @@ export default function QuickPage() {
       );
     }
   }, [isDev]);
+
 
   // Stage 2 Queue Runner (Max 3 Workers)
   useEffect(() => {
@@ -616,6 +718,12 @@ export default function QuickPage() {
     e?.preventDefault();
     e?.stopPropagation();
 
+    const targetRow = files.find((r) => r.id === id);
+    if (targetRow?.splits && targetRow.splits.length > 0) {
+      const confirmed = window.confirm("This row has split allocations. Remove this entry and its split data from Quick Mode?");
+      if (!confirmed) return;
+    }
+
     setFiles((prev) => {
       const target = prev.find((r) => r.id === id);
       if (target?.previewUrl) {
@@ -691,6 +799,81 @@ export default function QuickPage() {
     { number: 2, title: "Full AI Extraction", icon: ListChecks, current: stage === "stage2_extracting", description: "Payment-gated Gemini Vision" },
     { number: 3, title: "Export Excel", icon: FileSpreadsheet, current: stage === "stage2_complete", description: "Download verified spreadsheet" }
   ];
+
+  // Excel download handler
+  const handleDownloadExcel = () => {
+    const validRows = files
+      .filter((f) => f.extractStatus === "ready" || f.extractStatus === "needs_review")
+      .map((f) => ({
+        original_name: f.original_name,
+        extracted_date: f.extracted_date || null,
+        extracted_party: f.extracted_party || null,
+        guessed_category: f.guessed_category || null,
+        extracted_amount: f.extracted_amount || null,
+        splits: f.splits && f.splits.length > 0 ? f.splits : undefined,
+        guessed_type: f.guessed_type || "expense",
+        status: f.extractStatus
+      }));
+    downloadQuickExcel(validRows);
+  };
+
+  // Derived Display Order for active batch
+  const totalBatches = Math.max(1, Math.ceil(files.length / REVIEW_BATCH_SIZE));
+  const activeBatchOriginal = files.slice(currentBatchIndex * REVIEW_BATCH_SIZE, (currentBatchIndex + 1) * REVIEW_BATCH_SIZE);
+  
+  // Calculate duplicates in active batch (using normalized in-memory identifiers)
+  const countMap: Record<string, number> = {};
+  activeBatchOriginal.forEach((r) => {
+    const norm = getNormalizedIdentifier(r.extracted_utr);
+    if (norm) {
+      countMap[norm] = (countMap[norm] || 0) + 1;
+    }
+  });
+  const duplicateRowIdsInBatch = new Set<string>();
+  activeBatchOriginal.forEach((r) => {
+    const norm = getNormalizedIdentifier(r.extracted_utr);
+    if (norm && countMap[norm] > 1) {
+      duplicateRowIdsInBatch.add(r.id);
+    }
+  });
+
+  // Derived Display Array for Active Batch (Priority: 1. failed, 2. needs_review, 3. edited, 4. untouched ready, 5. collapsed ready)
+  const activeBatchDisplay = [...activeBatchOriginal].sort((a, b) => {
+    const getPriority = (row: QuickFileRow) => {
+      const isFailed = row.ocrStatus === "failed" || row.extractStatus === "failed";
+      if (isFailed) return 1;
+      if (row.extractStatus === "needs_review") return 2;
+      if (row.isEdited || interactedRowIds[row.id]) return 3;
+      const isCollapsed = Boolean(collapsedRowIds[row.id]);
+      if (!isCollapsed) return 4;
+      return 5;
+    };
+    return getPriority(a) - getPriority(b);
+  });
+
+  const readyInBatchCount = activeBatchOriginal.filter((r) => r.extractStatus === "ready").length;
+  const collapsedInBatch = activeBatchOriginal.filter((r) => Boolean(collapsedRowIds[r.id]));
+
+  // Check if any row in active batch has an incomplete split
+  const invalidSplitRowInBatch = activeBatchOriginal.find((r) => {
+    if (r.isSplitting || (r.splits && r.splits.length > 0)) {
+      const val = getRowSplitValidation(r);
+      return !val.isComplete;
+    }
+    return false;
+  });
+
+  const isFinalBatch = currentBatchIndex >= totalBatches - 1;
+
+  const handleExpandAllReadyInBatch = () => {
+    setCollapsedRowIds((prev) => {
+      const next = { ...prev };
+      activeBatchOriginal.forEach((r) => {
+        next[r.id] = false;
+      });
+      return next;
+    });
+  };
 
   return (
     <div className="min-h-screen flex flex-col theme-page">
@@ -973,7 +1156,7 @@ export default function QuickPage() {
                   Stage 1 OCR Scan Complete
                 </h3>
                 <p className="text-xs text-[var(--muted)] max-w-lg mb-4 leading-relaxed">
-                  Uploaded files were successfully read in your browser. Full editable ledger rows, exact transaction amounts, payee names, UTR numbers, and Excel export require payment.
+                  Uploaded files were successfully read in your browser. Full editable ledger rows, exact transaction amounts, payee names, and Excel export require payment.
                 </p>
 
                 <div className="flex items-center gap-3">
@@ -993,61 +1176,96 @@ export default function QuickPage() {
             )}
 
             {/* Chunked Review Progress Header */}
-            {stage === "stage2_complete" && (() => {
-              const totalBatches = Math.max(1, Math.ceil(files.length / REVIEW_BATCH_SIZE));
-              const activeBatch = files.slice(currentBatchIndex * REVIEW_BATCH_SIZE, (currentBatchIndex + 1) * REVIEW_BATCH_SIZE);
-              const readyInBatchCount = activeBatch.filter((r) => r.extractStatus === "ready").length;
-
-              return (
-                <div className="p-4 bg-[var(--card-muted)] border-b border-[var(--border)] flex flex-col gap-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-bold text-[var(--foreground)] flex items-center gap-1.5">
-                          <Layers className="w-4 h-4 text-[var(--primary)]" />
-                          <span>Batch {currentBatchIndex + 1} of {totalBatches}</span>
-                        </span>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] text-[var(--muted)]">
-                          Showing {currentBatchIndex * REVIEW_BATCH_SIZE + 1}–{Math.min((currentBatchIndex + 1) * REVIEW_BATCH_SIZE, files.length)} of {files.length} entries
-                        </span>
-                      </div>
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-1">
-                        {readyInBatchCount}/{activeBatch.length} look ready — review the highlighted rows.
-                      </p>
+            {stage === "stage2_complete" && (
+              <div className="p-4 bg-[var(--card-muted)] border-b border-[var(--border)] flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-[var(--foreground)] flex items-center gap-1.5">
+                        <Layers className="w-4 h-4 text-[var(--primary)]" />
+                        <span>Batch {currentBatchIndex + 1} of {totalBatches}</span>
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] text-[var(--muted)]">
+                        Showing {currentBatchIndex * REVIEW_BATCH_SIZE + 1}–{Math.min((currentBatchIndex + 1) * REVIEW_BATCH_SIZE, files.length)} of {files.length} entries
+                      </span>
                     </div>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-1">
+                      {readyInBatchCount}/{activeBatchOriginal.length} Rows look ready — review highlighted entries.
+                    </p>
+                  </div>
 
-                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      disabled={currentBatchIndex === 0}
+                      onClick={() => setCurrentBatchIndex((prev) => Math.max(0, prev - 1))}
+                      className="px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      aria-label="Previous batch"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      <span>Previous Batch</span>
+                    </button>
+
+                    {!isFinalBatch ? (
                       <button
                         type="button"
-                        disabled={currentBatchIndex === 0}
-                        onClick={() => setCurrentBatchIndex((prev) => Math.max(0, prev - 1))}
-                        className="px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                      >
-                        <ChevronLeft className="w-3.5 h-3.5" />
-                        <span>Previous Batch</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={currentBatchIndex >= totalBatches - 1}
+                        disabled={Boolean(invalidSplitRowInBatch)}
                         onClick={() => setCurrentBatchIndex((prev) => Math.min(totalBatches - 1, prev + 1))}
-                        className="px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-sm"
+                        aria-label="Review next batch"
                       >
-                        <span>Next Batch</span>
+                        <span>Review next batch</span>
                         <ChevronRight className="w-3.5 h-3.5" />
                       </button>
-                    </div>
-                  </div>
-
-                  <div className="w-full h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[var(--primary)] transition-all duration-300"
-                      style={{ width: `${((currentBatchIndex + 1) / totalBatches) * 100}%` }}
-                    />
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={Boolean(invalidSplitRowInBatch)}
+                        onClick={handleDownloadExcel}
+                        className="px-4 py-1.5 rounded-lg btn-theme-accent text-xs font-extrabold flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-sm"
+                        aria-label="Review complete — Generate Excel"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        <span>Review complete — Generate Excel</span>
+                      </button>
+                    )}
                   </div>
                 </div>
-              );
-            })()}
+
+                {invalidSplitRowInBatch && (
+                  <div className="rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-2.5 text-xs text-amber-800 dark:text-amber-300 font-semibold flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>
+                      Cannot proceed: Entry &quot;{invalidSplitRowInBatch.original_name}&quot; has an incomplete split allocation. Allocated sum must equal total payment.
+                    </span>
+                  </div>
+                )}
+
+                {collapsedInBatch.length > 1 && (
+                  <div className="flex items-center justify-between bg-[var(--card)] p-2 rounded-lg border border-[var(--border)] text-xs">
+                    <span className="text-[var(--muted)] font-medium">
+                      {collapsedInBatch.length} extracted rows collapsed
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleExpandAllReadyInBatch}
+                        className="text-xs font-semibold text-[var(--primary)] hover:underline flex items-center gap-1"
+                      >
+                        Expand ready rows
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="w-full h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[var(--primary)] transition-all duration-300"
+                    style={{ width: `${((currentBatchIndex + 1) / totalBatches) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
             <div className={`overflow-x-auto ${stage !== "stage2_complete" ? "opacity-40 select-none blur-[1px]" : ""}`}>
               <table className="w-full text-left text-xs border-collapse">
@@ -1060,30 +1278,29 @@ export default function QuickPage() {
                     <th className="py-3 px-4">Party / Payee</th>
                     <th className="py-3 px-4">Category</th>
                     <th className="py-3 px-4 text-right">Amount</th>
-                    <th className="py-3 px-4">UTR / Account</th>
+                    <th className="py-3 px-4">Actions / Redirection</th>
                     <th className="py-3 px-4 text-center w-10">Remove</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
-                  {(stage === "stage2_complete"
-                    ? files.slice(currentBatchIndex * REVIEW_BATCH_SIZE, (currentBatchIndex + 1) * REVIEW_BATCH_SIZE)
-                    : files
-                  ).map((row) => {
+                  {/* eslint-disable-next-line react-hooks/refs */}
+                  {(stage === "stage2_complete" ? activeBatchDisplay : files).map((row) => {
                     const isCollapsed = Boolean(collapsedRowIds[row.id]);
+                    const isDuplicate = duplicateRowIdsInBatch.has(row.id);
 
                     if (stage === "stage2_complete" && isCollapsed) {
                       return (
                         <tr
                           key={`col-${row.id}`}
-                          ref={(el) => { rowRefs.current[row.id] = el; }}
+                          ref={(el) => setRowRef(row.id, el)}
                           className="bg-[var(--card-muted)]/30 hover:bg-[var(--card-muted)]/60 transition-colors"
                         >
-                          <td colSpan={9} className="py-2.5 px-4">
+                          <td colSpan={8} className="py-2.5 px-4">
                             <div className="flex items-center justify-between text-xs">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                                 <span className="font-semibold text-[var(--foreground)]">{row.original_name}</span>
-                                <span className="text-[11px] text-[var(--muted)]">— Not flagged — extracted rows collapsed</span>
+                                <span className="text-[11px] text-[var(--muted)]">— Rows look ready (extracted rows collapsed)</span>
                                 {row.extracted_party && (
                                   <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] font-medium">
                                     {row.extracted_party}
@@ -1099,11 +1316,23 @@ export default function QuickPage() {
                                 type="button"
                                 onClick={() => toggleRowCollapse(row.id)}
                                 className="text-[11px] font-semibold text-[var(--primary)] hover:underline flex items-center gap-1 cursor-pointer"
+                                aria-label={`Expand row for ${row.original_name}`}
                               >
-                                <span>Expand Row</span>
+                                <span>Expand row</span>
                                 <ChevronDown className="w-3.5 h-3.5" />
                               </button>
                             </div>
+                          </td>
+                          <td className="py-2.5 px-4 text-center align-middle">
+                            <button
+                              type="button"
+                              onClick={(e) => handleRemoveFile(row.id, e)}
+                              className="p-1.5 rounded text-[var(--muted)] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer"
+                              title="Remove this entry from the Quick Mode export"
+                              aria-label="Remove this entry from the Quick Mode export"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </td>
                         </tr>
                       );
@@ -1112,8 +1341,8 @@ export default function QuickPage() {
                     return (
                       <tr
                         key={row.id}
-                        ref={(el) => { rowRefs.current[row.id] = el; }}
-                        className={`hover:bg-[var(--card-muted)]/50 transition-colors group flex-col ${
+                        ref={(el) => setRowRef(row.id, el)}
+                        className={`hover:bg-[var(--card-muted)]/50 transition-all duration-300 motion-reduce:transition-none group ${
                           row.extractStatus === "needs_review"
                             ? "bg-amber-500/5 border-l-4 border-l-amber-500"
                             : row.extractStatus === "failed"
@@ -1151,6 +1380,7 @@ export default function QuickPage() {
                               type="button"
                               onClick={() => toggleDiagnostics(row.id)}
                               className="text-[9px] font-mono text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 mt-1 cursor-pointer"
+                              aria-label="Toggle diagnostics"
                             >
                               <Terminal className="w-3 h-3" />
                               <span>{expandedDiagnostics[row.id] ? "Hide Diagnostics" : "Inspect Diagnostics"}</span>
@@ -1179,7 +1409,7 @@ export default function QuickPage() {
                               </span>
                             )
                           ) : (
-                            <>
+                            <div className="flex flex-col gap-1 items-start">
                               {row.extractStatus === "queued" && (
                                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20">
                                   Queued
@@ -1213,7 +1443,15 @@ export default function QuickPage() {
                                   Failed
                                 </span>
                               )}
-                            </>
+
+                              {/* Duplicate Account Warning Badge */}
+                              {isDuplicate && (
+                                <span className="text-[9px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-500/20 flex items-center gap-1 max-w-[160px] whitespace-normal">
+                                  <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                                  <span>Repeated payment account in this batch — review intended payee.</span>
+                                </span>
+                              )}
+                            </div>
                           )}
                         </td>
 
@@ -1226,71 +1464,195 @@ export default function QuickPage() {
                               onChange={(e) => handleRowUpdate(row.id, { extracted_date: e.target.value })}
                               onFocus={() => handleRowInteraction(row.id)}
                               className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] font-mono text-xs text-[var(--foreground)] focus:ring-1 focus:ring-[var(--primary)] outline-none"
+                              aria-label="Transaction date"
                             />
                           ) : (
                             <span className="font-mono text-xs text-[var(--muted)]">••••-••-••</span>
                           )}
                         </td>
 
-                        {/* Party / Payee with Redirect Control */}
+                        {/* Party / Payee with Redirection Controls & Split Display */}
                         <td className="py-3 px-4 align-middle font-medium text-[var(--foreground)]">
                           {stage === "stage2_complete" ? (
                             <div className="flex flex-col gap-1.5">
-                              <input
-                                type="text"
-                                value={row.extracted_party || ""}
-                                placeholder="Payee / Party Name"
-                                onChange={(e) => handleRowUpdate(row.id, { extracted_party: e.target.value })}
-                                onFocus={() => handleRowInteraction(row.id)}
-                                className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] focus:ring-1 focus:ring-[var(--primary)] outline-none w-full max-w-[150px]"
-                              />
-                              <div className="flex items-center gap-2">
+                              {/* Standard Intended Payee Input */}
+                              <div className="flex flex-col gap-0.5">
+                                {row.actual_recipient && row.actual_recipient !== row.extracted_party && (
+                                  <span className="text-[9px] text-[var(--muted)] font-mono">
+                                    Paid to: {row.actual_recipient}
+                                  </span>
+                                )}
+                                <input
+                                  type="text"
+                                  value={row.extracted_party || ""}
+                                  placeholder="Intended Payee"
+                                  onChange={(e) => handleRowUpdate(row.id, { extracted_party: e.target.value })}
+                                  onFocus={() => handleRowInteraction(row.id)}
+                                  className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] focus:ring-1 focus:ring-[var(--primary)] outline-none w-full max-w-[150px]"
+                                  aria-label="Intended payee"
+                                />
+                              </div>
+
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <button
                                   type="button"
                                   onClick={() => toggleRedirectPayee(row.id)}
                                   className="text-[10px] text-[var(--primary)] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                                  aria-label="Change intended payee control"
                                 >
                                   <UserCheck className="w-3 h-3" />
-                                  <span>{row.isRedirectingPayee ? "Close Redirect" : "Redirect Payee"}</span>
+                                  <span>{row.isRedirectingPayee ? "Finish editing" : "Change intended payee"}</span>
                                 </button>
+
                                 <button
                                   type="button"
                                   onClick={() => toggleSplitting(row.id)}
                                   className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                                  aria-label="Split payment across people control"
                                 >
                                   <Split className="w-3 h-3" />
-                                  <span>{row.isSplitting ? "Close Split" : "Split Payment"}</span>
+                                  <span>{row.isSplitting ? "Done" : "Split payment across people"}</span>
                                 </button>
                               </div>
 
-                              {/* Experimental Split Payment Shell */}
-                              {row.isSplitting && (
-                                <div className="mt-1 p-2.5 bg-[var(--card-muted)] rounded-lg border border-[var(--border)] flex flex-col gap-1.5 max-w-[240px]">
-                                  <div className="flex items-center justify-between text-[10px]">
-                                    <span className="font-bold text-[var(--foreground)] flex items-center gap-1">
-                                      <Split className="w-3 h-3 text-[var(--primary)]" />
-                                      <span>Split Shell</span>
-                                    </span>
-                                    <span className="font-bold px-1 py-0.2 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px]">
-                                      Experimental
-                                    </span>
+                              {/* Payee Redirection Drawer */}
+                              {row.isRedirectingPayee && (
+                                <div className="p-3 bg-[var(--card-muted)] rounded-xl border border-[var(--border)] flex flex-col gap-2 max-w-[260px] text-xs">
+                                  <span className="font-bold text-[var(--foreground)] text-[11px] flex items-center gap-1">
+                                    <UserCheck className="w-3.5 h-3.5 text-[var(--primary)]" />
+                                    <span>Money passed through another account?</span>
+                                  </span>
+
+                                  <div>
+                                    <label className="text-[9px] font-bold text-[var(--muted)] uppercase block mb-0.5">
+                                      Paid to account
+                                    </label>
+                                    <div className="px-2 py-1 rounded bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--muted)] font-medium truncate">
+                                      {row.actual_recipient || row.extracted_party || "Account Recipient"}
+                                    </div>
                                   </div>
-                                  <div className="flex flex-col gap-1 text-[11px]">
+
+                                  <div>
+                                    <label className="text-[9px] font-bold text-[var(--muted)] uppercase block mb-0.5">
+                                      Intended for
+                                    </label>
                                     <input
                                       type="text"
-                                      placeholder="Sub-payee allocation"
-                                      className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs"
-                                      onChange={() => handleRowInteraction(row.id)}
-                                    />
-                                    <input
-                                      type="number"
-                                      placeholder="Sub-amount (₹)"
-                                      className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs font-mono"
-                                      onChange={() => handleRowInteraction(row.id)}
+                                      value={row.extracted_party || ""}
+                                      placeholder="Intended Payee"
+                                      onChange={(e) => handleRowUpdate(row.id, { extracted_party: e.target.value })}
+                                      onFocus={() => handleRowInteraction(row.id)}
+                                      className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] w-full outline-none focus:ring-1 focus:ring-[var(--primary)]"
                                     />
                                   </div>
+
+                                  <p className="text-[9px] text-[var(--muted)] leading-tight italic">
+                                    The account recipient actually received the money. The intended payee is who it was really for.
+                                  </p>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleRedirectPayee(row.id)}
+                                    className="self-end px-2.5 py-1 rounded bg-[var(--primary)] text-[var(--primary-foreground)] font-bold text-[10px]"
+                                  >
+                                    Done
+                                  </button>
                                 </div>
                               )}
+
+                              {/* Multi-Person Split Inline Editor */}
+                              {row.isSplitting && (() => {
+                                const val = getRowSplitValidation(row);
+                                return (
+                                  <div className="mt-2 p-3 bg-[var(--card-muted)] rounded-xl border border-[var(--border)] flex flex-col gap-2 max-w-[280px]">
+                                    <div className="flex items-center justify-between text-xs font-bold text-[var(--foreground)] border-b border-[var(--border)] pb-1.5">
+                                      <span>Original payment: ₹{(row.extracted_amount || 0).toLocaleString("en-IN")}</span>
+                                      <span className="text-[9px] font-semibold text-purple-600 dark:text-purple-400">
+                                        Split Payment
+                                      </span>
+                                    </div>
+
+                                    <div className="text-[11px] font-bold text-[var(--foreground)]">
+                                      Split payment across people
+                                    </div>
+
+                                    <div className="flex flex-col gap-2">
+                                      {(row.splits || []).map((s, idx) => (
+                                        <div key={s.id} className="flex items-center gap-1.5">
+                                          <span className="text-[10px] font-bold text-[var(--muted)] w-3 shrink-0">
+                                            {idx + 1}.
+                                          </span>
+                                          <input
+                                            type="text"
+                                            placeholder="Name"
+                                            value={s.name}
+                                            onChange={(e) => handleUpdateSplitPerson(row.id, s.id, { name: e.target.value })}
+                                            onFocus={() => handleRowInteraction(row.id)}
+                                            className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] flex-1 min-w-0"
+                                            aria-label={`Split person ${idx + 1} name`}
+                                          />
+                                          <input
+                                            type="number"
+                                            placeholder="Amount"
+                                            value={s.amount ?? ""}
+                                            onChange={(e) => handleUpdateSplitPerson(row.id, s.id, { amount: e.target.value ? parseFloat(e.target.value) : null })}
+                                            onFocus={() => handleRowInteraction(row.id)}
+                                            className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] font-mono text-xs text-[var(--foreground)] w-16 text-right"
+                                            aria-label={`Split person ${idx + 1} amount`}
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRemoveSplitPerson(row.id, s.id)}
+                                            className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded cursor-pointer"
+                                            title="Remove split person"
+                                            aria-label={`Remove split person ${idx + 1}`}
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAddSplitPerson(row.id)}
+                                      className="text-[10px] font-bold text-[var(--primary)] hover:underline flex items-center gap-1 self-start mt-1 cursor-pointer"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      <span>Add another person</span>
+                                    </button>
+
+                                    <div className="pt-2 border-t border-[var(--border)] flex flex-col gap-1 text-[11px]">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[var(--muted)]">Allocated:</span>
+                                        <span className="font-mono font-bold">₹{val.allocated.toLocaleString("en-IN")}</span>
+                                      </div>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[var(--muted)]">Remaining:</span>
+                                        <span className={`font-mono font-bold ${val.remaining !== 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                                          ₹{val.remaining.toLocaleString("en-IN")}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {val.remaining !== 0 && (
+                                      <div className="text-[9px] text-amber-700 dark:text-amber-400 font-semibold bg-amber-50 dark:bg-amber-500/10 p-1.5 rounded border border-amber-200 dark:border-amber-500/20">
+                                        Remaining must be ₹0 to complete split.
+                                      </div>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      disabled={!val.isComplete}
+                                      onClick={() => toggleSplitting(row.id)}
+                                      className="mt-1 w-full py-1 rounded bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-1"
+                                    >
+                                      <Check className="w-3 h-3" />
+                                      <span>Split complete</span>
+                                    </button>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           ) : (
                             <span className="text-[var(--muted)] font-mono">••••••••••••</span>
@@ -1307,6 +1669,7 @@ export default function QuickPage() {
                               onChange={(e) => handleRowUpdate(row.id, { guessed_category: e.target.value })}
                               onFocus={() => handleRowInteraction(row.id)}
                               className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] focus:ring-1 focus:ring-[var(--primary)] outline-none max-w-[110px]"
+                              aria-label="Category"
                             />
                           ) : (
                             <span className="text-[var(--muted)] font-mono">••••••</span>
@@ -1316,32 +1679,37 @@ export default function QuickPage() {
                         {/* Amount */}
                         <td className="py-3 px-4 align-middle text-right font-semibold text-[var(--foreground)] whitespace-nowrap">
                           {stage === "stage2_complete" ? (
-                            <input
-                              type="number"
-                              value={row.extracted_amount ?? ""}
-                              placeholder="Amount"
-                              onChange={(e) => handleRowUpdate(row.id, { extracted_amount: e.target.value ? parseFloat(e.target.value) : null })}
-                              onFocus={() => handleRowInteraction(row.id)}
-                              className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] font-mono text-xs text-[var(--foreground)] text-right focus:ring-1 focus:ring-[var(--primary)] outline-none max-w-[90px]"
-                            />
+                            <div className="flex flex-col items-end">
+                              <input
+                                type="number"
+                                value={row.extracted_amount ?? ""}
+                                placeholder="Amount"
+                                onChange={(e) => handleRowUpdate(row.id, { extracted_amount: e.target.value ? parseFloat(e.target.value) : null })}
+                                onFocus={() => handleRowInteraction(row.id)}
+                                className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] font-mono text-xs text-[var(--foreground)] text-right focus:ring-1 focus:ring-[var(--primary)] outline-none max-w-[90px]"
+                                aria-label="Amount"
+                              />
+                              {row.splits && row.splits.length > 0 && (
+                                <span className="text-[9px] font-mono text-purple-600 dark:text-purple-400 font-bold mt-0.5">
+                                  Split ({row.splits.length} people)
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-[var(--muted)] font-mono">₹•••••</span>
                           )}
                         </td>
 
-                        {/* UTR / Account */}
-                        <td className="py-3 px-4 align-middle font-mono text-[11px] text-[var(--muted)] max-w-[130px]">
+                        {/* Actions / Redirection Column (No UTR rendered!) */}
+                        <td className="py-3 px-4 align-middle text-xs">
                           {stage === "stage2_complete" ? (
-                            <input
-                              type="text"
-                              value={row.extracted_utr || ""}
-                              placeholder="UTR / Ref ID"
-                              onChange={(e) => handleRowUpdate(row.id, { extracted_utr: e.target.value })}
-                              onFocus={() => handleRowInteraction(row.id)}
-                              className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] font-mono text-[11px] text-[var(--foreground)] focus:ring-1 focus:ring-[var(--primary)] outline-none max-w-[120px]"
-                            />
+                            <div className="flex flex-col gap-1 items-start">
+                              <span className="text-[10px] text-[var(--muted)] italic">
+                                Session In-Memory
+                              </span>
+                            </div>
                           ) : (
-                            <span>••••••••••••</span>
+                            <span className="text-[var(--muted)] font-mono">••••••••••••</span>
                           )}
                         </td>
 
@@ -1351,7 +1719,8 @@ export default function QuickPage() {
                             type="button"
                             onClick={(e) => handleRemoveFile(row.id, e)}
                             className="p-1.5 rounded text-[var(--muted)] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer"
-                            title="Remove file"
+                            title="Remove this entry from the Quick Mode export"
+                            aria-label="Remove this entry from the Quick Mode export"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1362,7 +1731,7 @@ export default function QuickPage() {
                 </tbody>
               </table>
 
-              {/* Dev Diagnostics Expandable Panels */}
+              {/* Dev Diagnostics Expandable Panels (Safe Redacted Metadata Only) */}
               {isDev && files.some((r) => expandedDiagnostics[r.id]) && (
                 <div className="p-4 bg-slate-900 text-slate-200 border-t border-slate-800 text-xs font-mono flex flex-col gap-4">
                   <div className="font-bold text-purple-400 flex items-center gap-2">
@@ -1414,16 +1783,12 @@ export default function QuickPage() {
                           </div>
                         </div>
 
-                        {diag?.rejectedAmountCandidates.length ? (
-                          <div>
-                            <span className="text-slate-400 block mb-1">Rejected Candidates & Reasons:</span>
-                            <div className="bg-slate-900 p-2 rounded max-h-24 overflow-y-auto text-[10px] text-amber-300">
-                              {diag.rejectedAmountCandidates.map((r, i) => (
-                                <div key={i}>Candidate: "{r.raw}" → Reason: {r.reason}</div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
+                        {/* Redacted Safe Metadata */}
+                        <div className="mt-1 p-2 bg-slate-900 rounded text-[11px] text-purple-300 border border-slate-800 flex flex-col gap-0.5">
+                          <div>accountIdentifierDetected: {Boolean(row.extracted_utr) ? "true" : "false"}</div>
+                          <div>identifierType: {row.extracted_utr ? "UTR" : "unknown"}</div>
+                          <div>identifierFingerprint: &quot;[redacted]&quot;</div>
+                        </div>
 
                         <div>
                           <span className="text-slate-400 block mb-1">Raw Tesseract OCR Text Snippet:</span>
@@ -1453,7 +1818,7 @@ export default function QuickPage() {
                           <button
                             type="button"
                             onClick={() => handleRetryRow(row.id)}
-                            className="px-2 py-0.5 rounded bg-red-600 text-white font-bold text-[10px] flex items-center gap-1 hover:bg-red-700 transition-colors"
+                            className="px-2 py-0.5 rounded bg-red-600 text-white font-bold text-[10px] flex items-center gap-1 hover:bg-red-700 transition-colors cursor-pointer"
                           >
                             <RefreshCw className="w-3 h-3" />
                             <span>Retry Row</span>
@@ -1491,28 +1856,29 @@ export default function QuickPage() {
                     By downloading, you confirm you’ve reviewed the entries above.
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const validRows = files
-                      .filter((f) => f.extractStatus === "ready" || f.extractStatus === "needs_review")
-                      .map((f) => ({
-                        original_name: f.original_name,
-                        extracted_date: f.extracted_date || null,
-                        extracted_party: f.extracted_party || null,
-                        guessed_category: f.guessed_category || null,
-                        extracted_amount: f.extracted_amount || null,
-                        extracted_utr: f.extracted_utr || null,
-                        guessed_type: f.guessed_type || "expense",
-                        status: f.extractStatus
-                      }));
-                    downloadQuickExcel(validRows);
-                  }}
-                  className="btn-theme-accent text-xs px-4 py-2 rounded-lg font-bold flex items-center gap-2 cursor-pointer shadow-sm shrink-0"
-                >
-                  <FileSpreadsheet className="w-4 h-4" />
-                  <span>Download Quick Excel</span>
-                </button>
+                {isFinalBatch ? (
+                  <button
+                    type="button"
+                    disabled={Boolean(invalidSplitRowInBatch)}
+                    onClick={handleDownloadExcel}
+                    className="btn-theme-accent text-xs px-4 py-2 rounded-lg font-extrabold flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-sm shrink-0"
+                    aria-label="Review complete — Generate Excel"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>Review complete — Generate Excel</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={Boolean(invalidSplitRowInBatch)}
+                    onClick={() => setCurrentBatchIndex((prev) => Math.min(totalBatches - 1, prev + 1))}
+                    className="px-4 py-2 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-sm shrink-0 flex items-center gap-1.5"
+                    aria-label="Review next batch"
+                  >
+                    <span>Review next batch</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             )}
           </div>
