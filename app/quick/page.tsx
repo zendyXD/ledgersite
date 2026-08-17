@@ -67,7 +67,7 @@ export type QuickFileRow = {
   extractStatus: "queued" | "extracting" | "ready" | "needs_review" | "failed";
   extracted_date?: string | null;
   actual_recipient?: string | null; // Paid to account (actual bank recipient)
-  extracted_party?: string | null;   // Intended for (intended payee)
+  extracted_party?: string | null;   // Actually for (intended payee)
   guessed_category?: string | null;
   extracted_amount?: number | null;
   extracted_utr?: string | null;    // Internal identifier (retained ONLY client-side in memory for duplicate detection)
@@ -75,6 +75,10 @@ export type QuickFileRow = {
   extraction_confidence?: Record<string, string>;
   extractErrorMessage?: string;
   errorDetail?: QuickApiErrorResponse;
+
+  // Retry Engine State
+  retryCount?: number;
+  isTransientError?: boolean;
 
   // UX Review State
   isEdited?: boolean;
@@ -116,6 +120,45 @@ const getRowSplitValidation = (row: QuickFileRow) => {
   const remaining = parentAmount - allocated;
   const isComplete = splits.length > 0 && Math.abs(remaining) < 0.01 && splits.every((s) => s.name.trim() !== "" && s.amount !== null && s.amount > 0);
   return { parentAmount, allocated, remaining, isComplete };
+};
+
+// Transient error classification for automated retry
+const isTransientExtractionError = (httpStatus: number, code?: string, retryableFlag?: boolean): boolean => {
+  // Non-retryable status codes explicitly specified: 400, 401, 402, 403, 404
+  if (httpStatus >= 400 && httpStatus <= 404) return false;
+  // If backend explicitly marked retryable: false or code is non-retryable format error
+  if (retryableFlag === false) return false;
+  if (code === "FILE_TOO_LARGE" || code === "UNSUPPORTED_MIME" || code === "UNSUPPORTED_PDF" || code === "UNSUPPORTED_HEIC" || code === "PAYMENT_REQUIRED") {
+    return false;
+  }
+  // Transient status codes & conditions: 429, 502, 503, 504, 0 (network failure / timeout)
+  if (httpStatus === 429 || httpStatus === 502 || httpStatus === 503 || httpStatus === 504 || httpStatus === 0) {
+    return true;
+  }
+  // Generic 500 server error: only retry if explicitly retryable !== false
+  if (httpStatus === 500 && retryableFlag === true) {
+    return true;
+  }
+  return false;
+};
+
+// User-friendly safe error messaging for production
+const getProductionSafeErrorMessage = (row: QuickFileRow): string => {
+  const err = row.errorDetail;
+  if (!err) return "We couldn’t read this screenshot. Please check the file or try again.";
+  if (err.httpStatus === 429) {
+    return "Too many requests right now. We’ll try again shortly.";
+  }
+  if (err.httpStatus === 504 || err.code === "TIMEOUT") {
+    return "This screenshot took too long to read. You can try again.";
+  }
+  if (err.httpStatus === 402 || err.code === "PAYMENT_REQUIRED") {
+    return "Full extraction is unavailable until payment is completed.";
+  }
+  if (err.httpStatus === 400 || err.code?.startsWith("UNSUPPORTED")) {
+    return "This file type is not supported.";
+  }
+  return "We couldn’t read this screenshot. Please check the file or try again.";
 };
 
 export default function QuickPage() {
@@ -376,13 +419,13 @@ export default function QuickPage() {
               return {
                 ...r,
                 ocrStatus: "failed",
-                ocrErrorMessage: res.error || "OCR failed",
+                ocrErrorMessage: res.error || "Reading screenshot failed",
                 diagnostics: res.diagnostics,
                 errorDetail: {
                   ok: false,
                   stage: "ocr",
                   code: "OCR_EXECUTION_FAILED",
-                  message: res.error || "OCR failed to process image text.",
+                  message: res.error || "Could not read screenshot text.",
                   retryable: true
                 }
               };
@@ -416,9 +459,9 @@ export default function QuickPage() {
   }, []);
 
   // ----------------------------------------------------
-  // Stage 2: Gemini Full Extraction Handler & Queue
+  // Stage 2: AI Full Extraction Handler with Exponential Backoff Auto-Retry
   // ----------------------------------------------------
-  const processStage2Extraction = useCallback(async (id: string, file: File) => {
+  const processStage2Extraction = useCallback(async (id: string, file: File, currentRetryCount = 0) => {
     const formData = new FormData();
     formData.append("file", file);
 
@@ -428,7 +471,7 @@ export default function QuickPage() {
         fileName: file.name,
         fileType: file.type,
         fileSize: file.size,
-        hasFileInFormData: formData.has("file")
+        retryCount: currentRetryCount
       });
     }
 
@@ -453,14 +496,48 @@ export default function QuickPage() {
         if (res.status === 402) {
           setStage2Error("Payment required to unlock full extraction.");
         }
-        
+
+        const httpStatus = res.status;
+        const code = data?.code || "EXTRACTION_FAILED";
+        const retryable = data?.retryable ?? true;
+        const transient = isTransientExtractionError(httpStatus, code, retryable);
+
+        // Auto-retry transient errors up to 2 times with exponential backoff & jitter
+        if (transient && currentRetryCount < 2) {
+          const nextRetryCount = currentRetryCount + 1;
+          const backoffMs = nextRetryCount === 1 ? 1500 + Math.random() * 300 : 4000 + Math.random() * 500;
+
+          if (isDev) {
+            console.log(`[QuickMode Auto-Retry Scheduling] Row ${id} -> Retry #${nextRetryCount} in ${Math.round(backoffMs)}ms`);
+          }
+
+          setFiles((prev) =>
+            prev.map((row) =>
+              row.id === id
+                ? {
+                    ...row,
+                    extractStatus: "extracting",
+                    retryCount: nextRetryCount,
+                    isTransientError: true
+                  }
+                : row
+            )
+          );
+
+          setTimeout(() => {
+            processStage2Extraction(id, file, nextRetryCount);
+          }, backoffMs);
+          return;
+        }
+
+        // Final failure after retries exhausted or non-retryable error
         const errDetail: QuickApiErrorResponse = {
           ok: false,
           stage: "stage2",
-          code: data?.code || "EXTRACTION_FAILED",
-          message: data?.message || "Extraction failed for this file",
-          httpStatus: res.status,
-          retryable: data?.retryable ?? true
+          code,
+          message: data?.message || "We couldn’t read this screenshot. Please check the file or try again.",
+          httpStatus,
+          retryable: transient
         };
 
         setFiles((prev) =>
@@ -470,7 +547,8 @@ export default function QuickPage() {
                   ...row,
                   extractStatus: "failed",
                   extractErrorMessage: errDetail.message,
-                  errorDetail: errDetail
+                  errorDetail: errDetail,
+                  isTransientError: transient
                 }
               : row
           )
@@ -504,12 +582,38 @@ export default function QuickPage() {
                 guessed_category: data.guessed_category ?? null,
                 guessed_type: data.guessed_type ?? "expense",
                 extraction_confidence: data.extraction_confidence ?? {},
+                retryCount: 0,
+                isTransientError: undefined,
                 errorDetail: undefined
               }
             : row
         )
       );
     } catch (err: unknown) {
+      const transient = true;
+      if (transient && currentRetryCount < 2) {
+        const nextRetryCount = currentRetryCount + 1;
+        const backoffMs = nextRetryCount === 1 ? 1500 + Math.random() * 300 : 4000 + Math.random() * 500;
+
+        setFiles((prev) =>
+          prev.map((row) =>
+            row.id === id
+              ? {
+                  ...row,
+                  extractStatus: "extracting",
+                  retryCount: nextRetryCount,
+                  isTransientError: true
+                }
+              : row
+          )
+        );
+
+        setTimeout(() => {
+          processStage2Extraction(id, file, nextRetryCount);
+        }, backoffMs);
+        return;
+      }
+
       const errDetail: QuickApiErrorResponse = {
         ok: false,
         stage: "stage2",
@@ -526,7 +630,8 @@ export default function QuickPage() {
                 ...row,
                 extractStatus: "failed",
                 extractErrorMessage: errDetail.message,
-                errorDetail: errDetail
+                errorDetail: errDetail,
+                isTransientError: true
               }
             : row
         )
@@ -534,8 +639,7 @@ export default function QuickPage() {
     }
   }, [isDev]);
 
-
-  // Stage 2 Queue Runner (Max 3 Workers)
+  // Stage 2 Queue Runner (Max 3 Workers, Never Exceeding 3 Active Requests)
   useEffect(() => {
     if (stage !== "stage2_extracting") return;
 
@@ -552,7 +656,7 @@ export default function QuickPage() {
       );
 
       rowsToStart.forEach((row) => {
-        processStage2Extraction(row.id, row.file);
+        processStage2Extraction(row.id, row.file, row.retryCount || 0);
       });
     }
 
@@ -565,7 +669,7 @@ export default function QuickPage() {
     setStage2Error("");
     setStage("stage2_extracting");
     setFiles((prev) =>
-      prev.map((r) => (r.ocrStatus === "completed" ? { ...r, extractStatus: "queued" } : r))
+      prev.map((r) => (r.ocrStatus === "completed" ? { ...r, extractStatus: "queued", retryCount: 0 } : r))
     );
   };
 
@@ -576,7 +680,28 @@ export default function QuickPage() {
         if (r.ocrStatus === "failed") {
           return { ...r, ocrStatus: "idle", ocrErrorMessage: undefined, errorDetail: undefined };
         }
-        return { ...r, extractStatus: "queued", extractErrorMessage: undefined, errorDetail: undefined };
+        return { ...r, extractStatus: "queued", retryCount: 0, extractErrorMessage: undefined, errorDetail: undefined };
+      })
+    );
+    if (stage === "stage2_complete") {
+      setStage("stage2_extracting");
+    }
+  };
+
+  // Bulk retry action for eligible transient failed rows
+  const handleRetryFailedRows = () => {
+    setFiles((prev) =>
+      prev.map((r) => {
+        if (r.extractStatus === "failed" && r.isTransientError !== false && r.errorDetail?.httpStatus !== 402) {
+          return {
+            ...r,
+            extractStatus: "queued",
+            retryCount: 0,
+            extractErrorMessage: undefined,
+            errorDetail: undefined
+          };
+        }
+        return r;
       })
     );
     if (stage === "stage2_complete") {
@@ -620,6 +745,7 @@ export default function QuickPage() {
           ocrStatus: "failed",
           ocrErrorMessage: `File too large (max ${MAX_FILE_SIZE_MB}MB)`,
           extractStatus: "failed",
+          isTransientError: false,
           errorDetail: {
             ok: false,
             stage: "ocr",
@@ -639,8 +765,9 @@ export default function QuickPage() {
           fileType: f.type,
           fileSize: f.size,
           ocrStatus: "failed",
-          ocrErrorMessage: "PDF extraction deferred — please upload JPG, PNG, or WEBP images",
+          ocrErrorMessage: "PDF format deferred — upload JPG, PNG, or WEBP images",
           extractStatus: "failed",
+          isTransientError: false,
           errorDetail: {
             ok: false,
             stage: "ocr",
@@ -662,6 +789,7 @@ export default function QuickPage() {
           ocrStatus: "failed",
           ocrErrorMessage: "HEIC format not supported — use JPG, PNG, or WEBP",
           extractStatus: "failed",
+          isTransientError: false,
           errorDetail: {
             ok: false,
             stage: "ocr",
@@ -683,6 +811,7 @@ export default function QuickPage() {
           ocrStatus: "failed",
           ocrErrorMessage: "Unsupported format (JPG/PNG/WEBP only)",
           extractStatus: "failed",
+          isTransientError: false,
           errorDetail: {
             ok: false,
             stage: "ocr",
@@ -704,7 +833,8 @@ export default function QuickPage() {
         fileType: f.type,
         fileSize: f.size,
         ocrStatus: "idle",
-        extractStatus: "queued"
+        extractStatus: "queued",
+        retryCount: 0
       };
     });
 
@@ -761,7 +891,7 @@ export default function QuickPage() {
   };
 
   // ----------------------------------------------------
-  // Aggregate Stage 1 Metrics & Counts
+  // Aggregate Metrics & Counts
   // ----------------------------------------------------
   const filesReadCount = files.filter((f) => f.ocrStatus === "completed").length;
   const approxTransactionsDetected = files.filter((f) => f.ocrStatus === "completed" && f.ocrHasText).length;
@@ -794,10 +924,11 @@ export default function QuickPage() {
     failed: files.filter((f) => f.ocrStatus === "failed" || f.extractStatus === "failed").length
   };
 
+  // User-facing Step Labels (No technical Stage 1/2 terms)
   const steps = [
-    { number: 1, title: "Client OCR Scan", icon: Upload, current: stage === "stage1_ocr" || stage === "stage1_complete", description: "Free browser-side text read" },
-    { number: 2, title: "Full AI Extraction", icon: ListChecks, current: stage === "stage2_extracting", description: "Payment-gated Gemini Vision" },
-    { number: 3, title: "Export Excel", icon: FileSpreadsheet, current: stage === "stage2_complete", description: "Download verified spreadsheet" }
+    { number: 1, title: "Add screenshots", icon: Upload, current: stage === "stage1_ocr" || stage === "stage1_complete", description: "Select UPI images or receipts" },
+    { number: 2, title: "Check your entries", icon: ListChecks, current: stage === "stage2_extracting", description: "Review extracted payee & amount" },
+    { number: 3, title: "Download Excel", icon: FileSpreadsheet, current: stage === "stage2_complete", description: "Save clean verified spreadsheet" }
   ];
 
   // Excel download handler
@@ -820,6 +951,11 @@ export default function QuickPage() {
   // Derived Display Order for active batch
   const totalBatches = Math.max(1, Math.ceil(files.length / REVIEW_BATCH_SIZE));
   const activeBatchOriginal = files.slice(currentBatchIndex * REVIEW_BATCH_SIZE, (currentBatchIndex + 1) * REVIEW_BATCH_SIZE);
+
+  // Check for eligible transient failed rows in active workspace
+  const eligibleFailedRowsInBatch = activeBatchOriginal.filter(
+    (r) => r.extractStatus === "failed" && r.isTransientError !== false && r.errorDetail?.httpStatus !== 402
+  );
   
   // Calculate duplicates in active batch (using normalized in-memory identifiers)
   const countMap: Record<string, number> = {};
@@ -897,7 +1033,7 @@ export default function QuickPage() {
                   Quick Mode
                 </h1>
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary)]">
-                  Session Workspace
+                  Temporary Workspace
                 </span>
                 {isDev && (
                   <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400">
@@ -906,7 +1042,7 @@ export default function QuickPage() {
                 )}
               </div>
               <p className="text-xs text-[var(--muted)] mt-0.5">
-                Two-stage payment screenshot processing for fast Excel export
+                Fast screenshot processing for clean Excel exports
               </p>
             </div>
           </div>
@@ -923,11 +1059,11 @@ export default function QuickPage() {
           )}
         </div>
 
-        {/* Session-only Workspace Notice */}
+        {/* Temporary Workspace Notice (No technical session wording) */}
         <div className="rounded-xl bg-[var(--card-muted)] border border-[var(--border)] p-4 flex items-start gap-3">
           <Info className="w-4 h-4 text-[var(--primary)] shrink-0 mt-0.5" />
           <div className="text-xs text-[var(--muted)] leading-relaxed">
-            <strong className="text-[var(--foreground)]">Session-Only & Free Stage 1 OCR:</strong> Quick Mode operates entirely in browser client memory to verify payment screenshots. Files are not uploaded to Supabase Storage or saved to permanent database ledgers.
+            <strong className="text-[var(--foreground)]">Temporary workspace:</strong> Your files are used only for this batch. Nothing is saved to your account or ledger. Closing or refreshing this tab clears the batch.
           </div>
         </div>
 
@@ -1030,7 +1166,7 @@ export default function QuickPage() {
                 Add payment screenshots
               </h3>
               <p className="text-xs text-[var(--muted)] max-w-md mb-5 leading-relaxed">
-                Drag & drop UPI payment screenshots or receipt images. Browser-side free OCR starts instantly upon selection.
+                Drag & drop UPI payment screenshots or receipt images to process instantly.
               </p>
 
               <button
@@ -1054,30 +1190,30 @@ export default function QuickPage() {
                   {stage === "stage1_ocr" && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center gap-1">
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      Client OCR Scanning...
+                      Reading screenshots...
                     </span>
                   )}
                   {stage === "stage1_complete" && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
                       <Lock className="w-3 h-3" />
-                      Stage 1 Complete (Locked)
+                      Ready to check
                     </span>
                   )}
                   {stage === "stage2_extracting" && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center gap-1">
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      Full AI Extraction...
+                      Reading screenshots...
                     </span>
                   )}
                   {stage === "stage2_complete" && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3" />
-                      Stage 2 Unlocked
+                      Ready to check
                     </span>
                   )}
                 </h4>
                 <p className="text-xs text-[var(--muted)] mt-0.5">
-                  Browser Tesseract OCR worker pool active (up to 3 workers parallel)
+                  Screenshots are processed in temporary browser memory
                 </p>
               </div>
 
@@ -1093,13 +1229,13 @@ export default function QuickPage() {
           )}
         </div>
 
-        {/* Stage 1 Summary Banner (Client-side Rough OCR Estimates) */}
+        {/* Stage 1 Summary Banner */}
         {files.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div className="surface-panel p-3.5 rounded-xl flex flex-col border-l-4 border-l-blue-500">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] flex items-center justify-between">
                 <span>Files Read</span>
-                <span className="text-[9px] bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded font-mono">Session-only</span>
+                <span className="text-[9px] bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded font-mono">Temporary</span>
               </span>
               <span className="text-lg font-extrabold text-[var(--foreground)] mt-1">
                 {filesReadCount} <span className="text-xs font-normal text-[var(--muted)]">/ {counts.total}</span>
@@ -1108,8 +1244,8 @@ export default function QuickPage() {
 
             <div className="surface-panel p-3.5 rounded-xl flex flex-col border-l-4 border-l-indigo-500">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] flex items-center justify-between">
-                <span>Approx. transactions detected</span>
-                <span className="text-[9px] bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded font-mono">OCR estimate</span>
+                <span>Approx. transactions</span>
+                <span className="text-[9px] bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded font-mono">Estimate</span>
               </span>
               <span className="text-lg font-extrabold text-[var(--foreground)] mt-1">
                 {approxTransactionsDetected}
@@ -1129,7 +1265,7 @@ export default function QuickPage() {
             <div className="surface-panel p-3.5 rounded-xl flex flex-col border-l-4 border-l-purple-500">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] flex items-center justify-between">
                 <span>Estimated Total</span>
-                <span className="text-[9px] bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-mono">OCR estimate</span>
+                <span className="text-[9px] bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-mono">Estimate</span>
               </span>
               <span className="text-lg font-extrabold text-[var(--foreground)] mt-1">
                 {roughTotalSum != null ? (
@@ -1153,10 +1289,10 @@ export default function QuickPage() {
                   <Lock className="w-6 h-6" />
                 </div>
                 <h3 className="text-base font-bold text-[var(--foreground)] mb-1">
-                  Stage 1 OCR Scan Complete
+                  Screenshots read successfully
                 </h3>
                 <p className="text-xs text-[var(--muted)] max-w-lg mb-4 leading-relaxed">
-                  Uploaded files were successfully read in your browser. Full editable ledger rows, exact transaction amounts, payee names, and Excel export require payment.
+                  Uploaded files were read in your browser. Full editable ledger rows, exact transaction amounts, payee names, and Excel export require unlocking extraction.
                 </p>
 
                 <div className="flex items-center gap-3">
@@ -1231,6 +1367,24 @@ export default function QuickPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Bulk Failed Row Retry Action Banner */}
+                {eligibleFailedRowsInBatch.length > 0 && (
+                  <div className="rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-3 text-xs text-amber-800 dark:text-amber-300 font-semibold flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <span>Some screenshots could not be processed. You can retry them individually.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRetryFailedRows}
+                      className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm shrink-0"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Retry failed rows</span>
+                    </button>
+                  </div>
+                )}
 
                 {invalidSplitRowInBatch && (
                   <div className="rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-2.5 text-xs text-amber-800 dark:text-amber-300 font-semibold flex items-center gap-2">
@@ -1389,58 +1543,58 @@ export default function QuickPage() {
                           )}
                         </td>
 
-                        {/* Per-File Status Badge */}
+                        {/* Per-File Status Badge (Mapped User-Friendly Copy) */}
                         <td className="py-3 px-4 align-middle whitespace-nowrap">
                           {stage !== "stage2_complete" && stage !== "stage2_extracting" ? (
                             row.ocrStatus === "processing" ? (
                               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20">
                                 <Loader2 className="w-3 h-3 animate-spin text-blue-600 dark:text-blue-400" />
-                                OCR Reading...
+                                Reading screenshot
                               </span>
                             ) : row.ocrStatus === "completed" ? (
                               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20">
                                 <ShieldCheck className="w-3 h-3 text-teal-600 dark:text-teal-400" />
-                                OCR Verified
+                                Ready to check
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">
                                 <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
-                                OCR Failed
+                                Couldn’t read
                               </span>
                             )
                           ) : (
                             <div className="flex flex-col gap-1 items-start">
                               {row.extractStatus === "queued" && (
                                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20">
-                                  Queued
+                                  Waiting
                                 </span>
                               )}
 
                               {row.extractStatus === "extracting" && (
                                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20">
                                   <Loader2 className="w-3 h-3 animate-spin text-purple-600 dark:text-purple-400" />
-                                  Extracting...
+                                  {row.retryCount && row.retryCount > 0 ? "Trying again" : "Reading screenshot"}
                                 </span>
                               )}
 
                               {row.extractStatus === "ready" && (
                                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
                                   <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                                  Ready
+                                  Ready to check
                                 </span>
                               )}
 
                               {row.extractStatus === "needs_review" && (
                                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20">
                                   <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                                  Needs Review
+                                  Needs your review
                                 </span>
                               )}
 
                               {row.extractStatus === "failed" && (
                                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">
                                   <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
-                                  Failed
+                                  Couldn’t read
                                 </span>
                               )}
 
@@ -1501,7 +1655,7 @@ export default function QuickPage() {
                                   aria-label="Change intended payee control"
                                 >
                                   <UserCheck className="w-3 h-3" />
-                                  <span>{row.isRedirectingPayee ? "Finish editing" : "Change intended payee"}</span>
+                                  <span>{row.isRedirectingPayee ? "Done" : "Change intended payee"}</span>
                                 </button>
 
                                 <button
@@ -1520,7 +1674,7 @@ export default function QuickPage() {
                                 <div className="p-3 bg-[var(--card-muted)] rounded-xl border border-[var(--border)] flex flex-col gap-2 max-w-[260px] text-xs">
                                   <span className="font-bold text-[var(--foreground)] text-[11px] flex items-center gap-1">
                                     <UserCheck className="w-3.5 h-3.5 text-[var(--primary)]" />
-                                    <span>Money passed through another account?</span>
+                                    <span>Was this sent through someone else’s account?</span>
                                   </span>
 
                                   <div>
@@ -1534,7 +1688,7 @@ export default function QuickPage() {
 
                                   <div>
                                     <label className="text-[9px] font-bold text-[var(--muted)] uppercase block mb-0.5">
-                                      Intended for
+                                      Actually for
                                     </label>
                                     <input
                                       type="text"
@@ -1547,7 +1701,7 @@ export default function QuickPage() {
                                   </div>
 
                                   <p className="text-[9px] text-[var(--muted)] leading-tight italic">
-                                    The account recipient actually received the money. The intended payee is who it was really for.
+                                    The screenshot shows who received the money. Use this only if the payment was actually for someone else.
                                   </p>
 
                                   <button
@@ -1575,6 +1729,10 @@ export default function QuickPage() {
                                     <div className="text-[11px] font-bold text-[var(--foreground)]">
                                       Split payment across people
                                     </div>
+
+                                    <p className="text-[9.5px] text-[var(--muted)] italic">
+                                      Use this for one lump-sum payment that covers multiple people.
+                                    </p>
 
                                     <div className="flex flex-col gap-2">
                                       {(row.splits || []).map((s, idx) => (
@@ -1700,12 +1858,12 @@ export default function QuickPage() {
                           )}
                         </td>
 
-                        {/* Actions / Redirection Column (No UTR rendered!) */}
+                        {/* Actions / Redirection Column (No raw UTR rendered) */}
                         <td className="py-3 px-4 align-middle text-xs">
                           {stage === "stage2_complete" ? (
                             <div className="flex flex-col gap-1 items-start">
                               <span className="text-[10px] text-[var(--muted)] italic">
-                                Session In-Memory
+                                Temporary Memory
                               </span>
                             </div>
                           ) : (
@@ -1788,6 +1946,7 @@ export default function QuickPage() {
                           <div>accountIdentifierDetected: {Boolean(row.extracted_utr) ? "true" : "false"}</div>
                           <div>identifierType: {row.extracted_utr ? "UTR" : "unknown"}</div>
                           <div>identifierFingerprint: &quot;[redacted]&quot;</div>
+                          <div>retryCount: {row.retryCount || 0}</div>
                         </div>
 
                         <div>
@@ -1802,33 +1961,33 @@ export default function QuickPage() {
                 </div>
               )}
 
-              {/* Inline Expandable Error Drawers */}
+              {/* Inline Expandable Error Drawers (Safe Production Messages) */}
               {files.some((r) => r.ocrStatus === "failed" || r.extractStatus === "failed") && (
                 <div className="p-4 bg-red-950/20 border-t border-red-500/20 flex flex-col gap-2">
                   <div className="font-bold text-red-600 dark:text-red-400 text-xs flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" />
-                    <span>Row Failure Details & Diagnostics</span>
+                    <span>Row Failure Details</span>
                   </div>
 
                   {files.filter((r) => r.ocrStatus === "failed" || r.extractStatus === "failed").map((row) => (
                     <div key={`err-${row.id}`} className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs flex flex-col gap-1.5">
                       <div className="flex items-center justify-between font-semibold text-red-700 dark:text-red-400">
-                        <span>{row.original_name} — Stage: {row.errorDetail?.stage?.toUpperCase() || (row.ocrStatus === "failed" ? "STAGE 1 OCR" : "STAGE 2 EXTRACTION")}</span>
-                        {row.errorDetail?.retryable && (
+                        <span>{row.original_name}</span>
+                        {(row.errorDetail?.retryable || row.isTransientError !== false) && row.errorDetail?.httpStatus !== 402 && (
                           <button
                             type="button"
                             onClick={() => handleRetryRow(row.id)}
                             className="px-2 py-0.5 rounded bg-red-600 text-white font-bold text-[10px] flex items-center gap-1 hover:bg-red-700 transition-colors cursor-pointer"
                           >
                             <RefreshCw className="w-3 h-3" />
-                            <span>Retry Row</span>
+                            <span>Retry</span>
                           </button>
                         )}
                       </div>
 
-                      {/* User Safe Message */}
+                      {/* User Safe Production Message */}
                       <p className="text-xs text-red-800 dark:text-red-300">
-                        {row.extractErrorMessage || row.ocrErrorMessage || "Processing failed for this screenshot."}
+                        {getProductionSafeErrorMessage(row)}
                       </p>
 
                       {/* Dev Detailed Error Info */}
@@ -1850,7 +2009,7 @@ export default function QuickPage() {
               <div className="p-4 bg-[var(--card-muted)] border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div>
                   <div className="text-xs font-semibold text-[var(--foreground)]">
-                    Full extraction complete. Ready to download clean Excel spreadsheet.
+                    Extraction complete. Ready to download clean Excel spreadsheet.
                   </div>
                   <div className="text-[11px] text-[var(--muted)] italic mt-0.5">
                     By downloading, you confirm you’ve reviewed the entries above.
