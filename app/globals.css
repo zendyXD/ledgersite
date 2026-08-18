@@ -260,3 +260,15 @@ html.dark {
 .btn-theme-accent:hover {
   background-color: var(--primary-hover);
 }
+
+/* Smooth row expansion utility */
+.row-expand-container {
+  transition: max-height 0.3s ease-in-out, opacity 0.25s ease-in-out;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-expand-container {
+    transition: none !important;
+  }
+}

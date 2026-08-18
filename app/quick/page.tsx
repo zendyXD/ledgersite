@@ -47,6 +47,20 @@ export type QuickSplitItem = {
   amount: number | null;
 };
 
+export type DraftRowState = {
+  extracted_date: string;
+  extracted_party: string;
+  extracted_amount: string;
+  guessed_category: string;
+  errors: {
+    extracted_date?: string;
+    extracted_party?: string;
+    extracted_amount?: string;
+    guessed_category?: string;
+  };
+};
+
+
 export type QuickFileRow = {
   id: string;
   file: File; // Retained original File object in memory
@@ -161,6 +175,25 @@ const getProductionSafeErrorMessage = (row: QuickFileRow): string => {
   return "We couldn’t read this screenshot. Please check the file or try again.";
 };
 
+const getFlaggedRowReason = (row: QuickFileRow, isDuplicate: boolean): string => {
+  if (row.ocrStatus === "failed" || row.extractStatus === "failed") {
+    return "We couldn’t read this screenshot";
+  }
+  if (!row.extracted_amount || row.extracted_amount <= 0) {
+    return "Amount is missing";
+  }
+  if (!row.extracted_party || row.extracted_party.trim() === "") {
+    return "Payee is missing";
+  }
+  if (!row.extracted_date || row.extracted_date.trim() === "") {
+    return "Date is missing";
+  }
+  if (isDuplicate) {
+    return "Repeated payment account in this batch — review intended payee";
+  }
+  return "Please review the extracted details";
+};
+
 export default function QuickPage() {
   const [files, setFiles] = useState<QuickFileRow[]>([]);
   const [dragActive, setDragActive] = useState(false);
@@ -173,6 +206,7 @@ export default function QuickPage() {
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [collapsedRowIds, setCollapsedRowIds] = useState<Record<string, boolean>>({});
   const [interactedRowIds, setInteractedRowIds] = useState<Record<string, boolean>>({});
+  const [editingDrafts, setEditingDrafts] = useState<Record<string, DraftRowState>>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeUrlsRef = useRef<Set<string>>(new Set());
@@ -273,20 +307,127 @@ export default function QuickPage() {
       collapseTimerRef.current = null;
     }
     setInteractedRowIds((prev) => ({ ...prev, [rowId]: true }));
-    setCollapsedRowIds((prev) => ({ ...prev, [rowId]: false }));
   }, []);
-
-  const handleRowUpdate = useCallback((rowId: string, updates: Partial<QuickFileRow>) => {
-    handleRowInteraction(rowId);
-    setFiles((prev) =>
-      prev.map((r) => (r.id === rowId ? { ...r, ...updates, isEdited: true } : r))
-    );
-  }, [handleRowInteraction]);
 
   const toggleRowCollapse = useCallback((rowId: string) => {
     handleRowInteraction(rowId);
-    setCollapsedRowIds((prev) => ({ ...prev, [rowId]: !prev[rowId] }));
+    setCollapsedRowIds((prev) => {
+      const isCurrentlyCollapsed = prev[rowId] !== undefined ? prev[rowId] : false;
+      return { ...prev, [rowId]: !isCurrentlyCollapsed };
+    });
   }, [handleRowInteraction]);
+
+  const handleStartEditRow = useCallback((rowId: string) => {
+    if (collapseTimerRef.current) {
+      clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+    const row = files.find((r) => r.id === rowId);
+    if (!row) return;
+
+    setInteractedRowIds((prev) => ({ ...prev, [rowId]: true }));
+    setCollapsedRowIds((prev) => ({ ...prev, [rowId]: false }));
+
+    setEditingDrafts((prev) => ({
+      ...prev,
+      [rowId]: {
+        extracted_date: row.extracted_date || "",
+        extracted_party: row.extracted_party || "",
+        extracted_amount: row.extracted_amount != null ? String(row.extracted_amount) : "",
+        guessed_category: row.guessed_category || "",
+        errors: {}
+      }
+    }));
+  }, [files]);
+
+  const handleUpdateDraft = useCallback((rowId: string, updates: Partial<DraftRowState>) => {
+    setEditingDrafts((prev) => {
+      const current = prev[rowId];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [rowId]: {
+          ...current,
+          ...updates,
+          errors: {
+            ...current.errors,
+            ...Object.keys(updates).reduce((acc, key) => ({ ...acc, [key]: undefined }), {})
+          }
+        }
+      };
+    });
+  }, []);
+
+  const handleCancelEditRow = useCallback((rowId: string) => {
+    setEditingDrafts((prev) => {
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
+  }, []);
+
+  const handleSaveRow = useCallback((rowId: string) => {
+    const draft = editingDrafts[rowId];
+    if (!draft) return;
+
+    const errors: DraftRowState["errors"] = {};
+
+    if (!draft.extracted_date || draft.extracted_date.trim() === "") {
+      errors.extracted_date = "Date is required";
+    }
+
+    if (!draft.extracted_party || draft.extracted_party.trim() === "") {
+      errors.extracted_party = "Payee is required";
+    }
+
+    const numVal = parseFloat(draft.extracted_amount);
+    if (!draft.extracted_amount || isNaN(numVal) || numVal <= 0) {
+      errors.extracted_amount = "Amount must be greater than 0";
+    }
+
+    const isValid = Object.keys(errors).length === 0;
+
+    if (!isValid) {
+      setEditingDrafts((prev) => ({
+        ...prev,
+        [rowId]: {
+          ...draft,
+          errors
+        }
+      }));
+      setFiles((prev) =>
+        prev.map((r) => (r.id === rowId ? { ...r, extractStatus: "needs_review" } : r))
+      );
+      setCollapsedRowIds((prev) => ({ ...prev, [rowId]: false }));
+      return;
+    }
+
+    setFiles((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        return {
+          ...r,
+          extracted_date: draft.extracted_date.trim(),
+          extracted_party: draft.extracted_party.trim(),
+          actual_recipient: r.actual_recipient || draft.extracted_party.trim(),
+          extracted_amount: numVal,
+          guessed_category: draft.guessed_category.trim() || null,
+          extractStatus: "ready",
+          isEdited: true,
+          ocrStatus: r.ocrStatus === "failed" ? "completed" : r.ocrStatus,
+          extractErrorMessage: undefined
+        };
+      })
+    );
+
+    setEditingDrafts((prev) => {
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
+
+    setCollapsedRowIds((prev) => ({ ...prev, [rowId]: true }));
+  }, [editingDrafts]);
 
   const toggleRedirectPayee = useCallback((rowId: string) => {
     handleRowInteraction(rowId);
@@ -862,6 +1003,22 @@ export default function QuickPage() {
       }
       return prev.filter((r) => r.id !== id);
     });
+
+    setCollapsedRowIds((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setInteractedRowIds((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setEditingDrafts((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
 
   const handleClearAll = () => {
@@ -876,6 +1033,9 @@ export default function QuickPage() {
     });
     activeUrlsRef.current.clear();
     setFiles([]);
+    setCollapsedRowIds({});
+    setInteractedRowIds({});
+    setEditingDrafts({});
     setWarningMessage("");
     setStage2Error("");
     setStage("stage1_ocr");
@@ -973,16 +1133,14 @@ export default function QuickPage() {
     }
   });
 
-  // Derived Display Array for Active Batch (Priority: 1. failed, 2. needs_review, 3. edited, 4. untouched ready, 5. collapsed ready)
+  // Derived Display Array for Active Batch (Priority: 1. failed, 2. needs_review, 3. edited/touched, 4. ready)
   const activeBatchDisplay = [...activeBatchOriginal].sort((a, b) => {
     const getPriority = (row: QuickFileRow) => {
       const isFailed = row.ocrStatus === "failed" || row.extractStatus === "failed";
       if (isFailed) return 1;
       if (row.extractStatus === "needs_review") return 2;
       if (row.isEdited || interactedRowIds[row.id]) return 3;
-      const isCollapsed = Boolean(collapsedRowIds[row.id]);
-      if (!isCollapsed) return 4;
-      return 5;
+      return 4;
     };
     return getPriority(a) - getPriority(b);
   });
@@ -1439,37 +1597,81 @@ export default function QuickPage() {
                 <tbody className="divide-y divide-[var(--border)]">
                   {/* eslint-disable-next-line react-hooks/refs */}
                   {(stage === "stage2_complete" ? activeBatchDisplay : files).map((row) => {
-                    const isCollapsed = Boolean(collapsedRowIds[row.id]);
                     const isDuplicate = duplicateRowIdsInBatch.has(row.id);
+                    const draft = editingDrafts[row.id];
+                    const isEditing = Boolean(draft);
+                    const isFlagged = row.extractStatus === "needs_review" || row.extractStatus === "failed" || row.ocrStatus === "failed";
+                    
+                    const isCollapsed = !isEditing && (collapsedRowIds[row.id] !== undefined ? collapsedRowIds[row.id] : row.extractStatus === "ready");
+                    const flaggedReason = getFlaggedRowReason(row, isDuplicate);
 
+                    // MODE 1: READ MODE (COLLAPSED)
                     if (stage === "stage2_complete" && isCollapsed) {
                       return (
                         <tr
-                          key={`col-${row.id}`}
+                          key={row.id}
                           ref={(el) => setRowRef(row.id, el)}
-                          className="bg-[var(--card-muted)]/30 hover:bg-[var(--card-muted)]/60 transition-colors"
+                          className="bg-[var(--card)] hover:bg-[var(--card-muted)]/60 transition-colors border-b border-[var(--border)]"
                         >
-                          <td colSpan={8} className="py-2.5 px-4">
-                            <div className="flex items-center justify-between text-xs">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                <span className="font-semibold text-[var(--foreground)]">{row.original_name}</span>
-                                <span className="text-[11px] text-[var(--muted)]">— Rows look ready (extracted rows collapsed)</span>
-                                {row.extracted_party && (
-                                  <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)] font-medium">
-                                    {row.extracted_party}
-                                  </span>
-                                )}
-                                {row.extracted_amount != null && (
-                                  <span className="text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-400">
-                                    ₹{row.extracted_amount.toLocaleString("en-IN")}
-                                  </span>
-                                )}
+                          <td className="py-2.5 px-4 align-middle">
+                            {row.previewUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={row.previewUrl} alt="" className="w-9 h-9 object-cover rounded-lg bg-[var(--card-muted)] border border-[var(--border)] shrink-0" />
+                            ) : (
+                              <div className="w-9 h-9 rounded-lg bg-[var(--card-muted)] border border-[var(--border)] flex items-center justify-center font-bold text-[9px] text-[var(--muted)] shrink-0">
+                                FILE
                               </div>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-4 align-middle max-w-[140px]">
+                            <div className="font-semibold text-[var(--foreground)] truncate text-xs" title={row.original_name}>
+                              {row.original_name}
+                            </div>
+                            <div className="text-[10px] text-[var(--muted)]">{formatFileSize(row.fileSize)}</div>
+                          </td>
+                          <td className="py-2.5 px-4 align-middle whitespace-nowrap">
+                            {row.extractStatus === "ready" ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                Ready to check
+                              </span>
+                            ) : row.extractStatus === "needs_review" ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20">
+                                <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                                Needs your review
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 border border-red-200 dark:border-red-500/20">
+                                <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
+                                Couldn’t read
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-4 align-middle text-xs font-mono text-[var(--foreground)]">
+                            {row.extracted_date || "—"}
+                          </td>
+                          <td className="py-2.5 px-4 align-middle text-xs font-medium text-[var(--foreground)] truncate max-w-[140px]" title={row.extracted_party || ""}>
+                            {row.extracted_party || row.actual_recipient || "—"}
+                          </td>
+                          <td className="py-2.5 px-4 align-middle text-xs text-[var(--muted)]">
+                            {row.guessed_category || "—"}
+                          </td>
+                          <td className="py-2.5 px-4 align-middle text-xs text-right font-mono font-bold text-[var(--foreground)]">
+                            {row.extracted_amount != null ? `₹${row.extracted_amount.toLocaleString("en-IN")}` : "—"}
+                          </td>
+                          <td className="py-2.5 px-4 align-middle whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              {row.isEdited && (
+                                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-500/20 flex items-center gap-1">
+                                  <Check className="w-3 h-3" />
+                                  <span>Saved for this batch ✓</span>
+                                </span>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => toggleRowCollapse(row.id)}
-                                className="text-[11px] font-semibold text-[var(--primary)] hover:underline flex items-center gap-1 cursor-pointer"
+                                className="px-2.5 py-1 rounded-md text-xs font-semibold text-[var(--primary)] hover:bg-[var(--card-muted)] transition-colors flex items-center gap-1 cursor-pointer"
+                                aria-expanded="false"
                                 aria-label={`Expand row for ${row.original_name}`}
                               >
                                 <span>Expand row</span>
@@ -1477,13 +1679,13 @@ export default function QuickPage() {
                               </button>
                             </div>
                           </td>
-                          <td className="py-2.5 px-4 text-center align-middle">
+                          <td className="py-2.5 px-4 align-middle text-center">
                             <button
                               type="button"
                               onClick={(e) => handleRemoveFile(row.id, e)}
                               className="p-1.5 rounded text-[var(--muted)] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer"
                               title="Remove this entry from the Quick Mode export"
-                              aria-label="Remove this entry from the Quick Mode export"
+                              aria-label={`Remove ${row.original_name}`}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1492,396 +1694,368 @@ export default function QuickPage() {
                       );
                     }
 
+                    // MODE 3: EDIT MODE
+                    if (stage === "stage2_complete" && isEditing && draft) {
+                      return (
+                        <tr key={`edit-${row.id}`} ref={(el) => setRowRef(row.id, el)} className="bg-[var(--card-elevated)] border-l-4 border-l-[var(--primary)] border-b border-[var(--border)]">
+                          <td colSpan={9} className="p-4">
+                            <div className="flex flex-col gap-4">
+                              <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-[var(--foreground)]">Edit entry:</span>
+                                  <span className="text-xs text-[var(--muted)] font-mono">{row.original_name}</span>
+                                </div>
+                                <span className="text-[10px] uppercase font-bold text-[var(--primary)] tracking-wider px-2 py-0.5 rounded bg-[var(--primary)]/10">
+                                  Edit Mode
+                                </span>
+                              </div>
+
+                              {/* Editable Input Fields */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                                {/* Date */}
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[11px] font-bold text-[var(--foreground)]">
+                                    Date <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={draft.extracted_date}
+                                    onChange={(e) => handleUpdateDraft(row.id, { extracted_date: e.target.value })}
+                                    className={`px-3 py-1.5 rounded-lg border text-xs font-mono bg-[var(--card)] text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] outline-none ${
+                                      draft.errors.extracted_date ? "border-red-500 ring-1 ring-red-500" : "border-[var(--border)]"
+                                    }`}
+                                    aria-label="Transaction date"
+                                  />
+                                  {draft.errors.extracted_date && (
+                                    <span className="text-[10px] font-semibold text-red-600 dark:text-red-400 flex items-center gap-1">
+                                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                                      <span>{draft.errors.extracted_date}</span>
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Intended Payee */}
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[11px] font-bold text-[var(--foreground)]">
+                                    Intended Payee <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={draft.extracted_party}
+                                    placeholder="Intended Payee"
+                                    autoFocus
+                                    onChange={(e) => handleUpdateDraft(row.id, { extracted_party: e.target.value })}
+                                    className={`px-3 py-1.5 rounded-lg border text-xs bg-[var(--card)] text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] outline-none ${
+                                      draft.errors.extracted_party ? "border-red-500 ring-1 ring-red-500" : "border-[var(--border)]"
+                                    }`}
+                                    aria-label="Intended payee"
+                                  />
+                                  {draft.errors.extracted_party && (
+                                    <span className="text-[10px] font-semibold text-red-600 dark:text-red-400 flex items-center gap-1">
+                                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                                      <span>{draft.errors.extracted_party}</span>
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Amount */}
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[11px] font-bold text-[var(--foreground)]">
+                                    Amount (₹) <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={draft.extracted_amount}
+                                    placeholder="Amount"
+                                    step="any"
+                                    onChange={(e) => handleUpdateDraft(row.id, { extracted_amount: e.target.value })}
+                                    className={`px-3 py-1.5 rounded-lg border text-xs font-mono text-right bg-[var(--card)] text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] outline-none ${
+                                      draft.errors.extracted_amount ? "border-red-500 ring-1 ring-red-500" : "border-[var(--border)]"
+                                    }`}
+                                    aria-label="Amount"
+                                  />
+                                  {draft.errors.extracted_amount && (
+                                    <span className="text-[10px] font-semibold text-red-600 dark:text-red-400 flex items-center gap-1">
+                                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                                      <span>{draft.errors.extracted_amount}</span>
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Category */}
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[11px] font-bold text-[var(--foreground)]">
+                                    Category
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={draft.guessed_category}
+                                    placeholder="e.g. Supplies, Rent"
+                                    onChange={(e) => handleUpdateDraft(row.id, { guessed_category: e.target.value })}
+                                    className="px-3 py-1.5 rounded-lg border border-[var(--border)] text-xs bg-[var(--card)] text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] outline-none"
+                                    aria-label="Category"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelEditRow(row.id)}
+                                  className="px-4 py-1.5 rounded-lg text-xs font-semibold text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveRow(row.id)}
+                                  className="px-5 py-1.5 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold transition-all shadow-sm hover:opacity-90 cursor-pointer flex items-center gap-1.5"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Save changes</span>
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    // MODE 2: EXPANDED READ MODE
                     return (
                       <tr
-                        key={row.id}
+                        key={`exp-${row.id}`}
                         ref={(el) => setRowRef(row.id, el)}
-                        className={`hover:bg-[var(--card-muted)]/50 transition-all duration-300 motion-reduce:transition-none group ${
-                          row.extractStatus === "needs_review"
-                            ? "bg-amber-500/5 border-l-4 border-l-amber-500"
-                            : row.extractStatus === "failed"
-                            ? "bg-red-500/5 border-l-4 border-l-red-500"
-                            : ""
+                        className={`border-b border-[var(--border)] transition-all ${
+                          isFlagged ? "bg-amber-500/5 border-l-4 border-l-amber-500" : "bg-[var(--card-muted)]/30"
                         }`}
                       >
-                        <td className="py-3 px-4 align-middle">
-                          {row.previewUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={row.previewUrl}
-                              alt="preview"
-                              className="w-10 h-10 object-cover rounded-lg bg-[var(--card-muted)] border border-[var(--border)] shrink-0"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 rounded-lg bg-[var(--card-muted)] border border-[var(--border)] flex items-center justify-center font-bold text-[9px] text-[var(--muted)] shrink-0">
-                              FILE
-                            </div>
-                          )}
-                        </td>
+                        <td colSpan={9} className="p-4">
+                          <div className="flex flex-col gap-4">
+                            
+                            {/* Flagged Row Notice Header */}
+                            {isFlagged && (
+                              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-start gap-2.5">
+                                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                  <div>
+                                    <h4 className="text-xs font-bold text-amber-900 dark:text-amber-300">
+                                      Needs your review
+                                    </h4>
+                                    <p className="text-xs text-amber-800 dark:text-amber-400 mt-0.5 font-medium">
+                                      {flaggedReason}
+                                    </p>
+                                  </div>
+                                </div>
 
-                        {/* File Name & Size */}
-                        <td className="py-3 px-4 align-middle max-w-[160px]">
-                          <div className="font-semibold text-[var(--foreground)] truncate" title={row.original_name}>
-                            {row.original_name}
-                          </div>
-                          <div className="text-[10px] text-[var(--muted)]">
-                            {formatFileSize(row.fileSize)}
-                          </div>
+                                <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                                  {row.extractStatus === "failed" && row.isTransientError !== false && row.errorDetail?.httpStatus !== 402 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRetryRow(row.id)}
+                                      className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
+                                    >
+                                      <RefreshCw className="w-3.5 h-3.5" />
+                                      <span>Retry</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditRow(row.id)}
+                                    className="px-4 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 text-xs font-bold transition-colors cursor-pointer shadow-sm"
+                                  >
+                                    Edit row
+                                  </button>
+                                </div>
+                              </div>
+                            )}
 
-                          {/* Dev Diagnostics Toggle Button */}
-                          {isDev && row.diagnostics && (
-                            <button
-                              type="button"
-                              onClick={() => toggleDiagnostics(row.id)}
-                              className="text-[9px] font-mono text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 mt-1 cursor-pointer"
-                              aria-label="Toggle diagnostics"
-                            >
-                              <Terminal className="w-3 h-3" />
-                              <span>{expandedDiagnostics[row.id] ? "Hide Diagnostics" : "Inspect Diagnostics"}</span>
-                              <ChevronDown className={`w-3 h-3 transition-transform ${expandedDiagnostics[row.id] ? "rotate-180" : ""}`} />
-                            </button>
-                          )}
-                        </td>
-
-                        {/* Per-File Status Badge (Mapped User-Friendly Copy) */}
-                        <td className="py-3 px-4 align-middle whitespace-nowrap">
-                          {stage !== "stage2_complete" && stage !== "stage2_extracting" ? (
-                            row.ocrStatus === "processing" ? (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20">
-                                <Loader2 className="w-3 h-3 animate-spin text-blue-600 dark:text-blue-400" />
-                                Reading screenshot
-                              </span>
-                            ) : row.ocrStatus === "completed" ? (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20">
-                                <ShieldCheck className="w-3 h-3 text-teal-600 dark:text-teal-400" />
-                                Ready to check
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">
-                                <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
-                                Couldn’t read
-                              </span>
-                            )
-                          ) : (
-                            <div className="flex flex-col gap-1 items-start">
-                              {row.extractStatus === "queued" && (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20">
-                                  Waiting
+                            {/* Detail Panel Summary Grid */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[var(--card)] p-3.5 rounded-xl border border-[var(--border)]">
+                              <div>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] block mb-0.5">
+                                  Date
                                 </span>
-                              )}
-
-                              {row.extractStatus === "extracting" && (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20">
-                                  <Loader2 className="w-3 h-3 animate-spin text-purple-600 dark:text-purple-400" />
-                                  {row.retryCount && row.retryCount > 0 ? "Trying again" : "Reading screenshot"}
+                                <span className="text-xs font-mono font-semibold text-[var(--foreground)]">
+                                  {row.extracted_date || <span className="text-amber-600 dark:text-amber-400 italic">Missing</span>}
                                 </span>
-                              )}
+                              </div>
 
-                              {row.extractStatus === "ready" && (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                                  Ready to check
+                              <div>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] block mb-0.5">
+                                  Payee / Intended Payee
                                 </span>
-                              )}
-
-                              {row.extractStatus === "needs_review" && (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20">
-                                  <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                                  Needs your review
+                                <span className="text-xs font-semibold text-[var(--foreground)] truncate block" title={row.extracted_party || ""}>
+                                  {row.extracted_party || <span className="text-amber-600 dark:text-amber-400 italic">Missing</span>}
                                 </span>
-                              )}
-
-                              {row.extractStatus === "failed" && (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">
-                                  <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
-                                  Couldn’t read
-                                </span>
-                              )}
-
-                              {/* Duplicate Account Warning Badge */}
-                              {isDuplicate && (
-                                <span className="text-[9px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-500/20 flex items-center gap-1 max-w-[160px] whitespace-normal">
-                                  <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
-                                  <span>Repeated payment account in this batch — review intended payee.</span>
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Date */}
-                        <td className="py-3 px-4 align-middle whitespace-nowrap text-[var(--foreground)]">
-                          {stage === "stage2_complete" ? (
-                            <input
-                              type="date"
-                              value={row.extracted_date || ""}
-                              onChange={(e) => handleRowUpdate(row.id, { extracted_date: e.target.value })}
-                              onFocus={() => handleRowInteraction(row.id)}
-                              className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] font-mono text-xs text-[var(--foreground)] focus:ring-1 focus:ring-[var(--primary)] outline-none"
-                              aria-label="Transaction date"
-                            />
-                          ) : (
-                            <span className="font-mono text-xs text-[var(--muted)]">••••-••-••</span>
-                          )}
-                        </td>
-
-                        {/* Party / Payee with Redirection Controls & Split Display */}
-                        <td className="py-3 px-4 align-middle font-medium text-[var(--foreground)]">
-                          {stage === "stage2_complete" ? (
-                            <div className="flex flex-col gap-1.5">
-                              {/* Standard Intended Payee Input */}
-                              <div className="flex flex-col gap-0.5">
                                 {row.actual_recipient && row.actual_recipient !== row.extracted_party && (
-                                  <span className="text-[9px] text-[var(--muted)] font-mono">
+                                  <span className="text-[9px] text-[var(--muted)] font-mono block mt-0.5">
                                     Paid to: {row.actual_recipient}
                                   </span>
                                 )}
-                                <input
-                                  type="text"
-                                  value={row.extracted_party || ""}
-                                  placeholder="Intended Payee"
-                                  onChange={(e) => handleRowUpdate(row.id, { extracted_party: e.target.value })}
-                                  onFocus={() => handleRowInteraction(row.id)}
-                                  className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] focus:ring-1 focus:ring-[var(--primary)] outline-none w-full max-w-[150px]"
-                                  aria-label="Intended payee"
-                                />
                               </div>
 
+                              <div>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] block mb-0.5">
+                                  Amount
+                                </span>
+                                <span className="text-xs font-mono font-bold text-[var(--foreground)]">
+                                  {row.extracted_amount != null ? `₹${row.extracted_amount.toLocaleString("en-IN")}` : <span className="text-amber-600 dark:text-amber-400 italic">Missing</span>}
+                                </span>
+                              </div>
+
+                              <div>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] block mb-0.5">
+                                  Category
+                                </span>
+                                <span className="text-xs text-[var(--foreground)]">
+                                  {row.guessed_category || "Uncategorized"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Safe Duplicate Account Warning */}
+                            {isDuplicate && (
+                              <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-xs text-amber-800 dark:text-amber-300 font-semibold flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                                <span>Repeated payment account in this batch — review intended payee.</span>
+                              </div>
+                            )}
+
+                            {/* Actions Toolbar */}
+                            <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-[var(--border)]">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleRedirectPayee(row.id)}
-                                  className="text-[10px] text-[var(--primary)] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
-                                  aria-label="Change intended payee control"
-                                >
-                                  <UserCheck className="w-3 h-3" />
-                                  <span>{row.isRedirectingPayee ? "Done" : "Change intended payee"}</span>
-                                </button>
+                                {!isFlagged && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditRow(row.id)}
+                                    className="px-3.5 py-1.5 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold hover:opacity-90 transition-all cursor-pointer shadow-sm"
+                                  >
+                                    Edit
+                                  </button>
+                                )}
 
                                 <button
                                   type="button"
                                   onClick={() => toggleSplitting(row.id)}
-                                  className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
-                                  aria-label="Split payment across people control"
+                                  className="px-3.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-amber-700 dark:text-amber-400 hover:bg-[var(--card-muted)] transition-colors flex items-center gap-1.5 cursor-pointer"
                                 >
-                                  <Split className="w-3 h-3" />
-                                  <span>{row.isSplitting ? "Done" : "Split payment across people"}</span>
+                                  <Split className="w-3.5 h-3.5" />
+                                  <span>{row.isSplitting ? "Close Split Editor" : "Split payment across people"}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleRemoveFile(row.id, e)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Remove</span>
                                 </button>
                               </div>
 
-                              {/* Payee Redirection Drawer */}
-                              {row.isRedirectingPayee && (
-                                <div className="p-3 bg-[var(--card-muted)] rounded-xl border border-[var(--border)] flex flex-col gap-2 max-w-[260px] text-xs">
-                                  <span className="font-bold text-[var(--foreground)] text-[11px] flex items-center gap-1">
-                                    <UserCheck className="w-3.5 h-3.5 text-[var(--primary)]" />
-                                    <span>Was this sent through someone else’s account?</span>
-                                  </span>
+                              <button
+                                type="button"
+                                onClick={() => toggleRowCollapse(row.id)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors flex items-center gap-1 cursor-pointer"
+                                aria-expanded="true"
+                                aria-label={`Collapse row for ${row.original_name}`}
+                              >
+                                <span>Collapse row</span>
+                                <ChevronDown className="w-3.5 h-3.5 rotate-180" />
+                              </button>
+                            </div>
 
-                                  <div>
-                                    <label className="text-[9px] font-bold text-[var(--muted)] uppercase block mb-0.5">
-                                      Paid to account
-                                    </label>
-                                    <div className="px-2 py-1 rounded bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--muted)] font-medium truncate">
-                                      {row.actual_recipient || row.extracted_party || "Account Recipient"}
-                                    </div>
+                            {/* Multi-Person Split Drawer */}
+                            {row.isSplitting && (() => {
+                              const val = getRowSplitValidation(row);
+                              return (
+                                <div className="p-4 bg-[var(--card)] rounded-xl border border-[var(--border)] flex flex-col gap-3">
+                                  <div className="flex items-center justify-between text-xs font-bold text-[var(--foreground)] border-b border-[var(--border)] pb-2">
+                                    <span>Split payment across people</span>
+                                    <span className="text-xs font-mono font-bold text-purple-600 dark:text-purple-400">
+                                      Original Total: ₹{(row.extracted_amount || 0).toLocaleString("en-IN")}
+                                    </span>
                                   </div>
 
-                                  <div>
-                                    <label className="text-[9px] font-bold text-[var(--muted)] uppercase block mb-0.5">
-                                      Actually for
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={row.extracted_party || ""}
-                                      placeholder="Intended Payee"
-                                      onChange={(e) => handleRowUpdate(row.id, { extracted_party: e.target.value })}
-                                      onFocus={() => handleRowInteraction(row.id)}
-                                      className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] w-full outline-none focus:ring-1 focus:ring-[var(--primary)]"
-                                    />
-                                  </div>
-
-                                  <p className="text-[9px] text-[var(--muted)] leading-tight italic">
-                                    The screenshot shows who received the money. Use this only if the payment was actually for someone else.
+                                  <p className="text-xs text-[var(--muted)] italic">
+                                    Use this for one lump-sum payment that covers multiple people.
                                   </p>
+
+                                  <div className="flex flex-col gap-2">
+                                    {(row.splits || []).map((s, idx) => (
+                                      <div key={s.id} className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-[var(--muted)] w-4 shrink-0">
+                                          {idx + 1}.
+                                        </span>
+                                        <input
+                                          type="text"
+                                          placeholder="Person Name"
+                                          value={s.name}
+                                          onChange={(e) => handleUpdateSplitPerson(row.id, s.id, { name: e.target.value })}
+                                          className="px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] flex-1 min-w-0"
+                                          aria-label={`Split person ${idx + 1} name`}
+                                        />
+                                        <input
+                                          type="number"
+                                          placeholder="Amount"
+                                          value={s.amount ?? ""}
+                                          onChange={(e) => handleUpdateSplitPerson(row.id, s.id, { amount: e.target.value ? parseFloat(e.target.value) : null })}
+                                          className="px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] font-mono text-xs text-[var(--foreground)] w-28 text-right"
+                                          aria-label={`Split person ${idx + 1} amount`}
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveSplitPerson(row.id, s.id)}
+                                          className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg cursor-pointer"
+                                          title="Remove split person"
+                                          aria-label={`Remove split person ${idx + 1}`}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
 
                                   <button
                                     type="button"
-                                    onClick={() => toggleRedirectPayee(row.id)}
-                                    className="self-end px-2.5 py-1 rounded bg-[var(--primary)] text-[var(--primary-foreground)] font-bold text-[10px]"
+                                    onClick={() => handleAddSplitPerson(row.id)}
+                                    className="text-xs font-bold text-[var(--primary)] hover:underline flex items-center gap-1 self-start mt-1 cursor-pointer"
                                   >
-                                    Done
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>Add another person</span>
+                                  </button>
+
+                                  <div className="pt-2 border-t border-[var(--border)] flex items-center justify-between text-xs font-bold">
+                                    <span className="text-[var(--muted)]">
+                                      Allocated: ₹{val.allocated.toLocaleString("en-IN")}
+                                    </span>
+                                    <span className={val.remaining !== 0 ? "text-amber-600 dark:text-amber-400 font-mono" : "text-emerald-600 dark:text-emerald-400 font-mono"}>
+                                      Remaining: ₹{val.remaining.toLocaleString("en-IN")}
+                                    </span>
+                                  </div>
+
+                                  {val.remaining !== 0 && (
+                                    <p className="text-xs text-amber-700 dark:text-amber-400 font-semibold bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20">
+                                      Remaining balance must be ₹0 to complete split allocation.
+                                    </p>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    disabled={!val.isComplete}
+                                    onClick={() => toggleSplitting(row.id)}
+                                    className="w-full py-2 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Complete Split Allocation</span>
                                   </button>
                                 </div>
-                              )}
+                              );
+                            })()}
 
-                              {/* Multi-Person Split Inline Editor */}
-                              {row.isSplitting && (() => {
-                                const val = getRowSplitValidation(row);
-                                return (
-                                  <div className="mt-2 p-3 bg-[var(--card-muted)] rounded-xl border border-[var(--border)] flex flex-col gap-2 max-w-[280px]">
-                                    <div className="flex items-center justify-between text-xs font-bold text-[var(--foreground)] border-b border-[var(--border)] pb-1.5">
-                                      <span>Original payment: ₹{(row.extracted_amount || 0).toLocaleString("en-IN")}</span>
-                                      <span className="text-[9px] font-semibold text-purple-600 dark:text-purple-400">
-                                        Split Payment
-                                      </span>
-                                    </div>
-
-                                    <div className="text-[11px] font-bold text-[var(--foreground)]">
-                                      Split payment across people
-                                    </div>
-
-                                    <p className="text-[9.5px] text-[var(--muted)] italic">
-                                      Use this for one lump-sum payment that covers multiple people.
-                                    </p>
-
-                                    <div className="flex flex-col gap-2">
-                                      {(row.splits || []).map((s, idx) => (
-                                        <div key={s.id} className="flex items-center gap-1.5">
-                                          <span className="text-[10px] font-bold text-[var(--muted)] w-3 shrink-0">
-                                            {idx + 1}.
-                                          </span>
-                                          <input
-                                            type="text"
-                                            placeholder="Name"
-                                            value={s.name}
-                                            onChange={(e) => handleUpdateSplitPerson(row.id, s.id, { name: e.target.value })}
-                                            onFocus={() => handleRowInteraction(row.id)}
-                                            className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] flex-1 min-w-0"
-                                            aria-label={`Split person ${idx + 1} name`}
-                                          />
-                                          <input
-                                            type="number"
-                                            placeholder="Amount"
-                                            value={s.amount ?? ""}
-                                            onChange={(e) => handleUpdateSplitPerson(row.id, s.id, { amount: e.target.value ? parseFloat(e.target.value) : null })}
-                                            onFocus={() => handleRowInteraction(row.id)}
-                                            className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] font-mono text-xs text-[var(--foreground)] w-16 text-right"
-                                            aria-label={`Split person ${idx + 1} amount`}
-                                          />
-                                          <button
-                                            type="button"
-                                            onClick={() => handleRemoveSplitPerson(row.id, s.id)}
-                                            className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded cursor-pointer"
-                                            title="Remove split person"
-                                            aria-label={`Remove split person ${idx + 1}`}
-                                          >
-                                            <Trash2 className="w-3 h-3" />
-                                          </button>
-                                        </div>
-                                      ))}
-                                    </div>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => handleAddSplitPerson(row.id)}
-                                      className="text-[10px] font-bold text-[var(--primary)] hover:underline flex items-center gap-1 self-start mt-1 cursor-pointer"
-                                    >
-                                      <Plus className="w-3 h-3" />
-                                      <span>Add another person</span>
-                                    </button>
-
-                                    <div className="pt-2 border-t border-[var(--border)] flex flex-col gap-1 text-[11px]">
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-[var(--muted)]">Allocated:</span>
-                                        <span className="font-mono font-bold">₹{val.allocated.toLocaleString("en-IN")}</span>
-                                      </div>
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-[var(--muted)]">Remaining:</span>
-                                        <span className={`font-mono font-bold ${val.remaining !== 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-                                          ₹{val.remaining.toLocaleString("en-IN")}
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    {val.remaining !== 0 && (
-                                      <div className="text-[9px] text-amber-700 dark:text-amber-400 font-semibold bg-amber-50 dark:bg-amber-500/10 p-1.5 rounded border border-amber-200 dark:border-amber-500/20">
-                                        Remaining must be ₹0 to complete split.
-                                      </div>
-                                    )}
-
-                                    <button
-                                      type="button"
-                                      disabled={!val.isComplete}
-                                      onClick={() => toggleSplitting(row.id)}
-                                      className="mt-1 w-full py-1 rounded bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-1"
-                                    >
-                                      <Check className="w-3 h-3" />
-                                      <span>Split complete</span>
-                                    </button>
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          ) : (
-                            <span className="text-[var(--muted)] font-mono">••••••••••••</span>
-                          )}
-                        </td>
-
-                        {/* Category */}
-                        <td className="py-3 px-4 align-middle text-[var(--foreground)]">
-                          {stage === "stage2_complete" ? (
-                            <input
-                              type="text"
-                              value={row.guessed_category || ""}
-                              placeholder="Category"
-                              onChange={(e) => handleRowUpdate(row.id, { guessed_category: e.target.value })}
-                              onFocus={() => handleRowInteraction(row.id)}
-                              className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] focus:ring-1 focus:ring-[var(--primary)] outline-none max-w-[110px]"
-                              aria-label="Category"
-                            />
-                          ) : (
-                            <span className="text-[var(--muted)] font-mono">••••••</span>
-                          )}
-                        </td>
-
-                        {/* Amount */}
-                        <td className="py-3 px-4 align-middle text-right font-semibold text-[var(--foreground)] whitespace-nowrap">
-                          {stage === "stage2_complete" ? (
-                            <div className="flex flex-col items-end">
-                              <input
-                                type="number"
-                                value={row.extracted_amount ?? ""}
-                                placeholder="Amount"
-                                onChange={(e) => handleRowUpdate(row.id, { extracted_amount: e.target.value ? parseFloat(e.target.value) : null })}
-                                onFocus={() => handleRowInteraction(row.id)}
-                                className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)] font-mono text-xs text-[var(--foreground)] text-right focus:ring-1 focus:ring-[var(--primary)] outline-none max-w-[90px]"
-                                aria-label="Amount"
-                              />
-                              {row.splits && row.splits.length > 0 && (
-                                <span className="text-[9px] font-mono text-purple-600 dark:text-purple-400 font-bold mt-0.5">
-                                  Split ({row.splits.length} people)
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-[var(--muted)] font-mono">₹•••••</span>
-                          )}
-                        </td>
-
-                        {/* Actions / Redirection Column (No raw UTR rendered) */}
-                        <td className="py-3 px-4 align-middle text-xs">
-                          {stage === "stage2_complete" ? (
-                            <div className="flex flex-col gap-1 items-start">
-                              <span className="text-[10px] text-[var(--muted)] italic">
-                                Temporary Memory
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-[var(--muted)] font-mono">••••••••••••</span>
-                          )}
-                        </td>
-
-                        {/* Remove Button */}
-                        <td className="py-3 px-4 align-middle text-center">
-                          <button
-                            type="button"
-                            onClick={(e) => handleRemoveFile(row.id, e)}
-                            className="p-1.5 rounded text-[var(--muted)] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer"
-                            title="Remove this entry from the Quick Mode export"
-                            aria-label="Remove this entry from the Quick Mode export"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          </div>
                         </td>
                       </tr>
                     );
