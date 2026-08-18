@@ -867,53 +867,35 @@ export type QuickExportRow = {
   extracted_party?: string | null;
   guessed_category?: string | null;
   extracted_amount?: number | null;
+  guessed_type?: "income" | "expense";
   splits?: QuickExportSplitRow[];
 };
 
 export async function downloadQuickExcel(rows: QuickExportRow[]) {
-  const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet("Quick Mode Export");
+  const validDates = rows.map((r) => r.extracted_date).filter(Boolean) as string[];
+  const monthStr = validDates.length > 0 && validDates[0].length >= 7 ? validDates[0].slice(0, 7) : new Date().toISOString().slice(0, 7);
 
-  sheet.columns = [
-    { header: "Date", key: "extracted_date", width: 15 },
-    { header: "Payee", key: "extracted_party", width: 25 },
-    { header: "Amount (₹)", key: "extracted_amount", width: 15 },
-    { header: "Category", key: "guessed_category", width: 20 },
-    { header: "Source file", key: "original_name", width: 25 },
-    { header: "Note", key: "note", width: 20 },
-  ];
+  const baseMonthlyEntries = rows.map((r, i) => ({
+    id: i + 1,
+    entry_date: r.extracted_date || "",
+    party_name: r.extracted_party || "Unspecified Payee",
+    amount: Number(r.extracted_amount || 0),
+    category: r.guessed_category || "Uncategorized",
+    entry_type: r.guessed_type || "expense",
+    note: r.original_name ? `Quick Mode: ${r.original_name}` : "Quick Mode Entry",
+    is_split: Boolean(r.splits && Array.isArray(r.splits) && r.splits.length > 0),
+    split_allocations: r.splits?.map((s) => ({
+      worker: s.name || "Unspecified",
+      amount: Number(s.amount || 0),
+      note: "Split allocation",
+    })),
+  }));
 
-  sheet.getRow(1).font = { bold: true };
-
-  rows.forEach((r) => {
-    if (r.splits && Array.isArray(r.splits) && r.splits.length > 0) {
-      r.splits.forEach((s) => {
-        sheet.addRow({
-          extracted_date: r.extracted_date || "",
-          extracted_party: s.name || r.extracted_party || "",
-          extracted_amount: s.amount || 0,
-          guessed_category: r.guessed_category || "",
-          original_name: r.original_name || "",
-          note: "Split payment"
-        });
-      });
-    } else {
-      sheet.addRow({
-        extracted_date: r.extracted_date || "",
-        extracted_party: r.extracted_party || "",
-        extracted_amount: r.extracted_amount || 0,
-        guessed_category: r.guessed_category || "",
-        original_name: r.original_name || "",
-        note: ""
-      });
-    }
+  const buffer = await generateDetailedExportBuffer(baseMonthlyEntries, { month: monthStr });
+  const blob = new Blob([buffer as unknown as BlobPart], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
-
-  sheet.getColumn("extracted_amount").numFmt = "₹#,##0.00";
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  saveAs(blob, `Quick_Mode_Export_${new Date().toISOString().split("T")[0]}.xlsx`);
+  saveAs(blob, `Ledgersite_Report_${monthStr}_Quick_Mode.xlsx`);
 }
 
 

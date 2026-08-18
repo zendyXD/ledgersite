@@ -30,7 +30,7 @@ import {
   Check
 } from "lucide-react";
 import { TesseractPool, runClientOcr, OcrDiagnostics } from "@/lib/ocr";
-import { downloadQuickExcel } from "@/lib/excel";
+import { downloadQuickExcel, QuickExportRow } from "@/lib/excel";
 
 export type QuickApiErrorResponse = {
   ok: false;
@@ -405,6 +405,25 @@ export default function QuickPage() {
     setFiles((prev) =>
       prev.map((r) => {
         if (r.id !== rowId) return r;
+
+        // Check if duplicate account identifier warning exists for this row
+        const norm = getNormalizedIdentifier(r.extracted_utr);
+        let isDuplicateAccount = false;
+        if (norm) {
+          const matchCount = prev.filter((other) => getNormalizedIdentifier(other.extracted_utr) === norm).length;
+          isDuplicateAccount = matchCount > 1;
+        }
+
+        let isInvalidSplit = false;
+        if (r.isSplitting || (r.splits && r.splits.length > 0)) {
+          const val = getRowSplitValidation(r);
+          isInvalidSplit = !val.isComplete;
+        }
+
+        // Set status to ready ONLY if no remaining review warning exists on this row
+        const hasRemainingWarning = isDuplicateAccount || isInvalidSplit;
+        const targetStatus = hasRemainingWarning ? "needs_review" : "ready";
+
         return {
           ...r,
           extracted_date: draft.extracted_date.trim(),
@@ -412,10 +431,10 @@ export default function QuickPage() {
           actual_recipient: r.actual_recipient || draft.extracted_party.trim(),
           extracted_amount: numVal,
           guessed_category: draft.guessed_category.trim() || null,
-          extractStatus: "ready",
+          extractStatus: targetStatus,
           isEdited: true,
           ocrStatus: r.ocrStatus === "failed" ? "completed" : r.ocrStatus,
-          extractErrorMessage: undefined
+          extractErrorMessage: hasRemainingWarning ? r.extractErrorMessage : undefined
         };
       })
     );
@@ -1091,20 +1110,50 @@ export default function QuickPage() {
     { number: 3, title: "Download Excel", icon: FileSpreadsheet, current: stage === "stage2_complete", description: "Save clean verified spreadsheet" }
   ];
 
-  // Excel download handler
+  // Excel download handler with incomplete row guard
   const handleDownloadExcel = () => {
-    const validRows = files
-      .filter((f) => f.extractStatus === "ready" || f.extractStatus === "needs_review")
-      .map((f) => ({
-        original_name: f.original_name,
-        extracted_date: f.extracted_date || null,
-        extracted_party: f.extracted_party || null,
-        guessed_category: f.guessed_category || null,
-        extracted_amount: f.extracted_amount || null,
-        splits: f.splits && f.splits.length > 0 ? f.splits : undefined,
-        guessed_type: f.guessed_type || "expense",
-        status: f.extractStatus
-      }));
+    // Identify rows missing required bookkeeping fields (Date, Payee, Amount > 0, or ready status)
+    const incompleteRows = files.filter((r) => {
+      const isMissingDate = !r.extracted_date || r.extracted_date.trim() === "";
+      const isMissingParty = !r.extracted_party || r.extracted_party.trim() === "";
+      const isMissingAmount = r.extracted_amount == null || isNaN(Number(r.extracted_amount)) || Number(r.extracted_amount) <= 0;
+      const isNotReady = r.extractStatus !== "ready";
+      let isInvalidSplit = false;
+      if (r.isSplitting || (r.splits && r.splits.length > 0)) {
+        const val = getRowSplitValidation(r);
+        isInvalidSplit = !val.isComplete;
+      }
+      return isMissingDate || isMissingParty || isMissingAmount || isNotReady || isInvalidSplit;
+    });
+
+    if (incompleteRows.length > 0) {
+      const count = incompleteRows.length;
+      setWarningMessage(
+        `Finish reviewing the highlighted entries before downloading. (${count} ${count === 1 ? "entry needs" : "entries need"} review)`
+      );
+
+      // Auto-scroll to the first incomplete row so the user can easily review & edit
+      const firstIncomplete = incompleteRows[0];
+      if (firstIncomplete && rowRefs.current[firstIncomplete.id]) {
+        const prefersReducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        rowRefs.current[firstIncomplete.id]?.scrollIntoView({
+          behavior: prefersReducedMotion ? "auto" : "smooth",
+          block: "nearest"
+        });
+      }
+      return;
+    }
+
+    const validRows: QuickExportRow[] = files.map((f) => ({
+      original_name: f.original_name,
+      extracted_date: f.extracted_date || null,
+      extracted_party: f.extracted_party || null,
+      guessed_category: f.guessed_category || null,
+      extracted_amount: f.extracted_amount != null ? Number(f.extracted_amount) : null,
+      guessed_type: f.guessed_type || "expense",
+      splits: f.splits && f.splits.length > 0 ? f.splits : undefined,
+    }));
+
     downloadQuickExcel(validRows);
   };
 
@@ -1672,10 +1721,18 @@ export default function QuickPage() {
                                 onClick={() => toggleRowCollapse(row.id)}
                                 className="px-2.5 py-1 rounded-md text-xs font-semibold text-[var(--primary)] hover:bg-[var(--card-muted)] transition-colors flex items-center gap-1 cursor-pointer"
                                 aria-expanded="false"
-                                aria-label={`Expand row for ${row.original_name}`}
+                                aria-label={`Expand row for ${row.extracted_party || row.original_name}`}
                               >
                                 <span>Expand row</span>
                                 <ChevronDown className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditRow(row.id)}
+                                className="px-2.5 py-1 rounded-md text-xs font-semibold bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 transition-all flex items-center gap-1 cursor-pointer shadow-sm"
+                                aria-label={`Edit row for ${row.extracted_party || row.original_name}`}
+                              >
+                                <span>Edit</span>
                               </button>
                             </div>
                           </td>
