@@ -126,6 +126,15 @@ const getNormalizedIdentifier = (utr?: string | null): string | null => {
   return trimmed;
 };
 
+function getMaskedPreviewValue(
+  value: string | number | null | undefined,
+  fallback = "••••••"
+): string {
+  if (value == null) return fallback;
+  const text = String(value).trim();
+  return text ? text : fallback;
+}
+
 // Split validation helper
 const getRowSplitValidation = (row: QuickFileRow) => {
   const parentAmount = row.extracted_amount || 0;
@@ -1697,16 +1706,16 @@ export default function QuickPage() {
                             )}
                           </td>
                           <td className="py-2.5 px-4 align-middle text-xs font-mono text-[var(--foreground)]">
-                            {row.extracted_date || "—"}
+                            {getMaskedPreviewValue(row.extracted_date, "••••••••")}
                           </td>
                           <td className="py-2.5 px-4 align-middle text-xs font-medium text-[var(--foreground)] truncate max-w-[140px]" title={row.extracted_party || ""}>
-                            {row.extracted_party || row.actual_recipient || "—"}
+                            {getMaskedPreviewValue(row.extracted_party || row.actual_recipient, "••••••••••")}
                           </td>
                           <td className="py-2.5 px-4 align-middle text-xs text-[var(--muted)]">
-                            {row.guessed_category || "—"}
+                            {getMaskedPreviewValue(row.guessed_category, "••••••")}
                           </td>
                           <td className="py-2.5 px-4 align-middle text-xs text-right font-mono font-bold text-[var(--foreground)]">
-                            {row.extracted_amount != null ? `₹${row.extracted_amount.toLocaleString("en-IN")}` : "—"}
+                            {row.extracted_amount != null ? `₹${row.extracted_amount.toLocaleString("en-IN")}` : "••••••"}
                           </td>
                           <td className="py-2.5 px-4 align-middle whitespace-nowrap">
                             <div className="flex items-center gap-2">
@@ -1847,7 +1856,7 @@ export default function QuickPage() {
                                   <input
                                     type="text"
                                     value={draft.guessed_category}
-                                    placeholder="e.g. Supplies, Rent"
+                                    placeholder="Choose category"
                                     onChange={(e) => handleUpdateDraft(row.id, { guessed_category: e.target.value })}
                                     className="px-3 py-1.5 rounded-lg border border-[var(--border)] text-xs bg-[var(--card)] text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] outline-none"
                                     aria-label="Category"
@@ -1935,7 +1944,7 @@ export default function QuickPage() {
                                   Date
                                 </span>
                                 <span className="text-xs font-mono font-semibold text-[var(--foreground)]">
-                                  {row.extracted_date || <span className="text-amber-600 dark:text-amber-400 italic">Missing</span>}
+                                  {getMaskedPreviewValue(row.extracted_date, "••••••••")}
                                 </span>
                               </div>
 
@@ -1944,7 +1953,7 @@ export default function QuickPage() {
                                   Payee / Intended Payee
                                 </span>
                                 <span className="text-xs font-semibold text-[var(--foreground)] truncate block" title={row.extracted_party || ""}>
-                                  {row.extracted_party || <span className="text-amber-600 dark:text-amber-400 italic">Missing</span>}
+                                  {getMaskedPreviewValue(row.extracted_party, "••••••••••")}
                                 </span>
                                 {row.actual_recipient && row.actual_recipient !== row.extracted_party && (
                                   <span className="text-[9px] text-[var(--muted)] font-mono block mt-0.5">
@@ -1958,7 +1967,7 @@ export default function QuickPage() {
                                   Amount
                                 </span>
                                 <span className="text-xs font-mono font-bold text-[var(--foreground)]">
-                                  {row.extracted_amount != null ? `₹${row.extracted_amount.toLocaleString("en-IN")}` : <span className="text-amber-600 dark:text-amber-400 italic">Missing</span>}
+                                  {row.extracted_amount != null ? `₹${row.extracted_amount.toLocaleString("en-IN")}` : "••••••"}
                                 </span>
                               </div>
 
@@ -1967,7 +1976,7 @@ export default function QuickPage() {
                                   Category
                                 </span>
                                 <span className="text-xs text-[var(--foreground)]">
-                                  {row.guessed_category || "Uncategorized"}
+                                  {getMaskedPreviewValue(row.guessed_category, "••••••")}
                                 </span>
                               </div>
                             </div>
