@@ -52,11 +52,15 @@ export type DraftRowState = {
   extracted_party: string;
   extracted_amount: string;
   guessed_category: string;
+  isSplitting?: boolean;
+  splits?: QuickSplitItem[];
+  splitError?: string;
   errors: {
     extracted_date?: string;
     extracted_party?: string;
     extracted_amount?: string;
     guessed_category?: string;
+    splits?: string;
   };
 };
 
@@ -139,6 +143,13 @@ function getMaskedPreviewValue(
 const getRowSplitValidation = (row: QuickFileRow) => {
   const parentAmount = row.extracted_amount || 0;
   const splits = row.splits || [];
+  const allocated = splits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+  const remaining = parentAmount - allocated;
+  const isComplete = splits.length > 0 && Math.abs(remaining) < 0.01 && splits.every((s) => s.name.trim() !== "" && s.amount !== null && s.amount > 0);
+  return { parentAmount, allocated, remaining, isComplete };
+};
+
+const getDraftSplitValidation = (parentAmount: number, splits: QuickSplitItem[]) => {
   const allocated = splits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
   const remaining = parentAmount - allocated;
   const isComplete = splits.length > 0 && Math.abs(remaining) < 0.01 && splits.every((s) => s.name.trim() !== "" && s.amount !== null && s.amount > 0);
@@ -385,6 +396,8 @@ export default function QuickPage() {
         extracted_party: row.extracted_party || "",
         extracted_amount: row.extracted_amount != null ? String(row.extracted_amount) : "",
         guessed_category: row.guessed_category || "",
+        isSplitting: row.isSplitting || false,
+        splits: row.splits ? row.splits.map((s) => ({ ...s })) : [],
         errors: {}
       }
     }));
@@ -399,6 +412,7 @@ export default function QuickPage() {
         [rowId]: {
           ...current,
           ...updates,
+          splitError: updates.splitError !== undefined ? updates.splitError : current.splitError,
           errors: {
             ...current.errors,
             ...Object.keys(updates).reduce((acc, key) => ({ ...acc, [key]: undefined }), {})
@@ -413,6 +427,96 @@ export default function QuickPage() {
       const next = { ...prev };
       delete next[rowId];
       return next;
+    });
+  }, []);
+
+  const handleToggleDraftSplitting = useCallback((rowId: string) => {
+    setEditingDrafts((prev) => {
+      const draft = prev[rowId];
+      if (!draft) return prev;
+
+      const numVal = parseFloat(draft.extracted_amount);
+      if (!draft.extracted_amount || isNaN(numVal) || numVal <= 0) {
+        return {
+          ...prev,
+          [rowId]: {
+            ...draft,
+            splitError: "Add a valid payment amount before splitting this payment."
+          }
+        };
+      }
+
+      const nextIsSplitting = !draft.isSplitting;
+      let nextSplits = draft.splits ? [...draft.splits] : [];
+      if (nextIsSplitting && nextSplits.length === 0) {
+        nextSplits = [
+          {
+            id: crypto.randomUUID(),
+            name: draft.extracted_party || "",
+            amount: numVal
+          }
+        ];
+      }
+
+      return {
+        ...prev,
+        [rowId]: {
+          ...draft,
+          isSplitting: nextIsSplitting,
+          splits: nextSplits,
+          splitError: undefined
+        }
+      };
+    });
+  }, []);
+
+  const handleAddDraftSplitPerson = useCallback((rowId: string) => {
+    setEditingDrafts((prev) => {
+      const draft = prev[rowId];
+      if (!draft) return prev;
+      const currentSplits = draft.splits || [];
+      const newSplit: QuickSplitItem = {
+        id: crypto.randomUUID(),
+        name: "",
+        amount: null
+      };
+      return {
+        ...prev,
+        [rowId]: {
+          ...draft,
+          splits: [...currentSplits, newSplit]
+        }
+      };
+    });
+  }, []);
+
+  const handleUpdateDraftSplitPerson = useCallback((rowId: string, splitId: string, updates: Partial<QuickSplitItem>) => {
+    setEditingDrafts((prev) => {
+      const draft = prev[rowId];
+      if (!draft) return prev;
+      const currentSplits = draft.splits || [];
+      return {
+        ...prev,
+        [rowId]: {
+          ...draft,
+          splits: currentSplits.map((s) => (s.id === splitId ? { ...s, ...updates } : s))
+        }
+      };
+    });
+  }, []);
+
+  const handleRemoveDraftSplitPerson = useCallback((rowId: string, splitId: string) => {
+    setEditingDrafts((prev) => {
+      const draft = prev[rowId];
+      if (!draft) return prev;
+      const currentSplits = draft.splits || [];
+      return {
+        ...prev,
+        [rowId]: {
+          ...draft,
+          splits: currentSplits.filter((s) => s.id !== splitId)
+        }
+      };
     });
   }, []);
 
@@ -433,6 +537,15 @@ export default function QuickPage() {
     const numVal = parseFloat(draft.extracted_amount);
     if (!draft.extracted_amount || isNaN(numVal) || numVal <= 0) {
       errors.extracted_amount = "Amount must be greater than 0";
+    }
+
+    let isInvalidSplit = false;
+    if (draft.isSplitting || (draft.splits && draft.splits.length > 0)) {
+      const val = getDraftSplitValidation(isNaN(numVal) ? 0 : numVal, draft.splits || []);
+      isInvalidSplit = !val.isComplete;
+      if (isInvalidSplit && draft.isSplitting) {
+        errors.splits = "Remaining balance must be ₹0 to complete split allocation.";
+      }
     }
 
     const isValid = Object.keys(errors).length === 0;
@@ -464,14 +577,16 @@ export default function QuickPage() {
           isDuplicateAccount = matchCount > 1;
         }
 
-        let isInvalidSplit = false;
-        if (r.isSplitting || (r.splits && r.splits.length > 0)) {
-          const val = getRowSplitValidation(r);
-          isInvalidSplit = !val.isComplete;
+        const draftSplits = draft.splits || [];
+        const draftIsSplitting = draft.isSplitting || false;
+        let splitCheckFailed = false;
+        if (draftIsSplitting || draftSplits.length > 0) {
+          const val = getDraftSplitValidation(numVal, draftSplits);
+          splitCheckFailed = !val.isComplete;
         }
 
         // Set status to ready ONLY if no remaining review warning exists on this row
-        const hasRemainingWarning = isDuplicateAccount || isInvalidSplit;
+        const hasRemainingWarning = isDuplicateAccount || splitCheckFailed;
         const targetStatus = hasRemainingWarning ? "needs_review" : "ready";
 
         return {
@@ -481,6 +596,8 @@ export default function QuickPage() {
           actual_recipient: r.actual_recipient || draft.extracted_party.trim(),
           extracted_amount: numVal,
           guessed_category: draft.guessed_category.trim() || null,
+          isSplitting: draftIsSplitting,
+          splits: draftSplits.length > 0 ? draftSplits : undefined,
           extractStatus: targetStatus,
           isEdited: true,
           ocrStatus: r.ocrStatus === "failed" ? "completed" : r.ocrStatus,
@@ -1160,13 +1277,22 @@ export default function QuickPage() {
     { number: 3, title: "Download Excel", icon: FileSpreadsheet, current: stage === "stage2_complete", description: "Save clean verified spreadsheet" }
   ];
 
-  // Excel download handler with incomplete row guard safety layer
+  // Excel download handler with incomplete row and active edit guard safety layer
   const handleDownloadExcel = () => {
-    if (exportReadiness.isExcelDownloadDisabled) {
-      const count = exportReadiness.incompleteCount;
-      setWarningMessage(
-        `Finish reviewing all entries before downloading. (${count} ${count === 1 ? "entry needs" : "entries need"} review)`
-      );
+    const activeEditCount = Object.keys(editingDrafts).length;
+    const isAnyRowBeingEdited = activeEditCount > 0;
+
+    if (isAnyRowBeingEdited || exportReadiness.isExcelDownloadDisabled) {
+      if (isAnyRowBeingEdited && exportReadiness.isExcelDownloadDisabled) {
+        setWarningMessage("Finish reviewing all entries and save or cancel active edits before downloading.");
+      } else if (isAnyRowBeingEdited) {
+        setWarningMessage("Finish saving or cancelling your edit before downloading.");
+      } else {
+        const count = exportReadiness.incompleteCount;
+        setWarningMessage(
+          `Finish reviewing all entries before downloading. (${count} ${count === 1 ? "entry needs" : "entries need"} review)`
+        );
+      }
 
       // Auto-scroll to the first incomplete row so the user can easily review & edit
       const firstIncomplete = exportReadiness.firstIncompleteRow;
@@ -1789,6 +1915,10 @@ export default function QuickPage() {
 
                     // MODE 3: EDIT MODE
                     if (stage === "stage2_complete" && isEditing && draft) {
+                      const draftAmountNum = parseFloat(draft.extracted_amount) || 0;
+                      const draftSplits = draft.splits || [];
+                      const draftVal = getDraftSplitValidation(draftAmountNum, draftSplits);
+
                       return (
                         <tr key={`edit-${row.id}`} ref={(el) => setRowRef(row.id, el)} className="bg-[var(--card-elevated)] border-l-4 border-l-[var(--primary)] border-b border-[var(--border)]">
                           <td colSpan={9} className="p-4">
@@ -1891,24 +2021,135 @@ export default function QuickPage() {
                                 </div>
                               </div>
 
-                              {/* Action Buttons */}
-                              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
-                                <button
-                                  type="button"
-                                  onClick={() => handleCancelEditRow(row.id)}
-                                  className="px-4 py-1.5 rounded-lg text-xs font-semibold text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors cursor-pointer"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleSaveRow(row.id)}
-                                  className="px-5 py-1.5 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold transition-all shadow-sm hover:opacity-90 cursor-pointer flex items-center gap-1.5"
-                                >
-                                  <Check className="w-3.5 h-3.5" />
-                                  <span>Save changes</span>
-                                </button>
+                              {/* Action Buttons: [Cancel] [Split payment across people] [Save changes] */}
+                              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[var(--border)]">
+                                {draft.splitError ? (
+                                  <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                                    <span>{draft.splitError}</span>
+                                  </span>
+                                ) : draft.errors.splits ? (
+                                  <span className="text-[11px] font-semibold text-red-600 dark:text-red-400 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                                    <span>{draft.errors.splits}</span>
+                                  </span>
+                                ) : (
+                                  <div />
+                                )}
+
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCancelEditRow(row.id)}
+                                    className="px-4 py-1.5 rounded-lg text-xs font-semibold text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-muted)] transition-colors cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleDraftSplitting(row.id)}
+                                    className="px-3.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs font-semibold text-amber-700 dark:text-amber-400 hover:bg-[var(--card-muted)] transition-colors flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Split className="w-3.5 h-3.5" />
+                                    <span>{draft.isSplitting ? "Close Split Editor" : "Split payment across people"}</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveRow(row.id)}
+                                    className="px-5 py-1.5 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold transition-all shadow-sm hover:opacity-90 cursor-pointer flex items-center gap-1.5"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Save changes</span>
+                                  </button>
+                                </div>
                               </div>
+
+                              {/* Multi-Person Split Drawer inside Edit Mode */}
+                              {draft.isSplitting && (
+                                <div className="p-4 bg-[var(--card)] rounded-xl border border-[var(--border)] flex flex-col gap-3">
+                                  <div className="flex items-center justify-between text-xs font-bold text-[var(--foreground)] border-b border-[var(--border)] pb-2">
+                                    <span>Split payment across people</span>
+                                    <span className="text-xs font-mono font-bold text-purple-600 dark:text-purple-400">
+                                      Original Total: ₹{draftAmountNum.toLocaleString("en-IN")}
+                                    </span>
+                                  </div>
+
+                                  <p className="text-xs text-[var(--muted)] italic">
+                                    Use this for one lump-sum payment that covers multiple people.
+                                  </p>
+
+                                  <div className="flex flex-col gap-2">
+                                    {draftSplits.map((s, idx) => (
+                                      <div key={s.id} className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-[var(--muted)] w-4 shrink-0">
+                                          {idx + 1}.
+                                        </span>
+                                        <input
+                                          type="text"
+                                          placeholder="Person Name"
+                                          value={s.name}
+                                          onChange={(e) => handleUpdateDraftSplitPerson(row.id, s.id, { name: e.target.value })}
+                                          className="px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs text-[var(--foreground)] flex-1 min-w-0"
+                                          aria-label={`Split person ${idx + 1} name`}
+                                        />
+                                        <input
+                                          type="number"
+                                          placeholder="Amount"
+                                          value={s.amount ?? ""}
+                                          onChange={(e) => handleUpdateDraftSplitPerson(row.id, s.id, { amount: e.target.value ? parseFloat(e.target.value) : null })}
+                                          className="px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] font-mono text-xs text-[var(--foreground)] w-28 text-right"
+                                          aria-label={`Split person ${idx + 1} amount`}
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveDraftSplitPerson(row.id, s.id)}
+                                          className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg cursor-pointer"
+                                          title="Remove split person"
+                                          aria-label={`Remove split person ${idx + 1}`}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddDraftSplitPerson(row.id)}
+                                    className="text-xs font-bold text-[var(--primary)] hover:underline flex items-center gap-1 self-start mt-1 cursor-pointer"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>Add another person</span>
+                                  </button>
+
+                                  <div className="pt-2 border-t border-[var(--border)] flex items-center justify-between text-xs font-bold">
+                                    <span className="text-[var(--muted)]">
+                                      Allocated: ₹{draftVal.allocated.toLocaleString("en-IN")}
+                                    </span>
+                                    <span className={draftVal.remaining !== 0 ? "text-amber-600 dark:text-amber-400 font-mono" : "text-emerald-600 dark:text-emerald-400 font-mono"}>
+                                      Remaining: ₹{draftVal.remaining.toLocaleString("en-IN")}
+                                    </span>
+                                  </div>
+
+                                  {draftVal.remaining !== 0 && (
+                                    <p className="text-xs text-amber-700 dark:text-amber-400 font-semibold bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20">
+                                      Remaining balance must be ₹0 to complete split allocation.
+                                    </p>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    disabled={!draftVal.isComplete}
+                                    onClick={() => handleToggleDraftSplitting(row.id)}
+                                    className="w-full py-2 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Done</span>
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -2272,53 +2513,64 @@ export default function QuickPage() {
             </div>
 
             {/* Export Excel Action Bar in Stage 2 Complete */}
-            {stage === "stage2_complete" && (
-              <div className="p-4 bg-[var(--card-muted)] border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div>
-                  {exportReadiness.isExcelDownloadDisabled ? (
-                    <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
-                      <AlertTriangle className="w-4 h-4 shrink-0" />
-                      <span>
-                        Finish reviewing all entries before downloading. ({exportReadiness.incompleteCount}{" "}
-                        {exportReadiness.incompleteCount === 1 ? "entry needs" : "entries need"} review)
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-xs font-semibold text-[var(--foreground)]">
-                      Extraction complete. Ready to download clean Excel spreadsheet.
-                    </div>
-                  )}
-                  <div className="text-[11px] text-[var(--muted)] italic mt-0.5">
-                    By downloading, you confirm you’ve reviewed the entries above.
-                  </div>
-                </div>
+            {stage === "stage2_complete" && (() => {
+              const activeEditCount = Object.keys(editingDrafts).length;
+              const isAnyRowBeingEdited = activeEditCount > 0;
+              const isExcelDownloadDisabled = exportReadiness.isExcelDownloadDisabled || isAnyRowBeingEdited;
 
-                <div className="flex items-center gap-2 shrink-0">
-                  {currentBatchIndex < totalBatches - 1 && (
+              return (
+                <div className="p-4 bg-[var(--card-muted)] border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div>
+                    {isExcelDownloadDisabled ? (
+                      <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>
+                          {isAnyRowBeingEdited && exportReadiness.isExcelDownloadDisabled
+                            ? "Finish reviewing all entries and save or cancel active edits before downloading."
+                            : isAnyRowBeingEdited
+                            ? "Finish saving or cancelling your edit before downloading."
+                            : `Finish reviewing all entries before downloading. (${exportReadiness.incompleteCount} ${
+                                exportReadiness.incompleteCount === 1 ? "entry needs" : "entries need"
+                              } review)`}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-xs font-semibold text-[var(--foreground)]">
+                        Extraction complete. Ready to download clean Excel spreadsheet.
+                      </div>
+                    )}
+                    <div className="text-[11px] text-[var(--muted)] italic mt-0.5">
+                      By downloading, you confirm you’ve reviewed the entries above.
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {currentBatchIndex < totalBatches - 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setCurrentBatchIndex((prev) => Math.min(totalBatches - 1, prev + 1))}
+                        className="px-4 py-2 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-sm hover:opacity-90 transition-all cursor-pointer flex items-center gap-1.5"
+                        aria-label="Review next batch"
+                      >
+                        <span>Review next batch</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    )}
+
                     <button
                       type="button"
-                      onClick={() => setCurrentBatchIndex((prev) => Math.min(totalBatches - 1, prev + 1))}
-                      className="px-4 py-2 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-sm hover:opacity-90 transition-all cursor-pointer flex items-center gap-1.5"
-                      aria-label="Review next batch"
+                      disabled={isExcelDownloadDisabled}
+                      onClick={handleDownloadExcel}
+                      className="btn-theme-accent text-xs px-4 py-2 rounded-lg font-extrabold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:opacity-50 disabled:shadow-none transition-all shadow-sm"
+                      aria-label="Review complete — Generate Excel"
                     >
-                      <span>Review next batch</span>
-                      <ChevronRight className="w-4 h-4" />
+                      <FileSpreadsheet className="w-4 h-4" />
+                      <span>Generate Excel</span>
                     </button>
-                  )}
-
-                  <button
-                    type="button"
-                    disabled={exportReadiness.isExcelDownloadDisabled}
-                    onClick={handleDownloadExcel}
-                    className="btn-theme-accent text-xs px-4 py-2 rounded-lg font-extrabold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:opacity-50 disabled:shadow-none transition-all shadow-sm"
-                    aria-label="Review complete — Generate Excel"
-                  >
-                    <FileSpreadsheet className="w-4 h-4" />
-                    <span>Generate Excel</span>
-                  </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
 
