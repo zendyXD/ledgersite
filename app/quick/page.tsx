@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import PublicHeader from "@/components/PublicHeader";
 import {
@@ -145,6 +145,44 @@ const getRowSplitValidation = (row: QuickFileRow) => {
   return { parentAmount, allocated, remaining, isComplete };
 };
 
+// Workspace export readiness helper (inspects all files across all batches)
+function getQuickExportReadiness(files: QuickFileRow[]) {
+  const incompleteRows = files.filter((r) => {
+    const isMissingDate = !r.extracted_date || r.extracted_date.trim() === "";
+    const isMissingParty = !r.extracted_party || r.extracted_party.trim() === "";
+    const isMissingAmount =
+      r.extracted_amount == null ||
+      isNaN(Number(r.extracted_amount)) ||
+      Number(r.extracted_amount) <= 0;
+    const isOcrBlocked = r.ocrStatus === "processing" || r.ocrStatus === "failed";
+    const isNotReady = r.extractStatus !== "ready";
+    let isInvalidSplit = false;
+    if (r.isSplitting || (r.splits && r.splits.length > 0)) {
+      const val = getRowSplitValidation(r);
+      isInvalidSplit = !val.isComplete;
+    }
+    return (
+      isMissingDate ||
+      isMissingParty ||
+      isMissingAmount ||
+      isOcrBlocked ||
+      isNotReady ||
+      isInvalidSplit
+    );
+  });
+
+  const incompleteCount = incompleteRows.length;
+  const isExcelDownloadDisabled = incompleteCount > 0;
+  const firstIncompleteRow = incompleteRows[0] || null;
+
+  return {
+    incompleteRows,
+    incompleteCount,
+    isExcelDownloadDisabled,
+    firstIncompleteRow,
+  };
+}
+
 // Transient error classification for automated retry
 const isTransientExtractionError = (httpStatus: number, code?: string, retryableFlag?: boolean): boolean => {
   // Non-retryable status codes explicitly specified: 400, 401, 402, 403, 404
@@ -216,6 +254,9 @@ export default function QuickPage() {
   const [collapsedRowIds, setCollapsedRowIds] = useState<Record<string, boolean>>({});
   const [interactedRowIds, setInteractedRowIds] = useState<Record<string, boolean>>({});
   const [editingDrafts, setEditingDrafts] = useState<Record<string, DraftRowState>>({});
+
+  // Derived Export Readiness across all files in workspace
+  const exportReadiness = useMemo(() => getQuickExportReadiness(files), [files]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeUrlsRef = useRef<Set<string>>(new Set());
@@ -1119,30 +1160,16 @@ export default function QuickPage() {
     { number: 3, title: "Download Excel", icon: FileSpreadsheet, current: stage === "stage2_complete", description: "Save clean verified spreadsheet" }
   ];
 
-  // Excel download handler with incomplete row guard
+  // Excel download handler with incomplete row guard safety layer
   const handleDownloadExcel = () => {
-    // Identify rows missing required bookkeeping fields (Date, Payee, Amount > 0, or ready status)
-    const incompleteRows = files.filter((r) => {
-      const isMissingDate = !r.extracted_date || r.extracted_date.trim() === "";
-      const isMissingParty = !r.extracted_party || r.extracted_party.trim() === "";
-      const isMissingAmount = r.extracted_amount == null || isNaN(Number(r.extracted_amount)) || Number(r.extracted_amount) <= 0;
-      const isNotReady = r.extractStatus !== "ready";
-      let isInvalidSplit = false;
-      if (r.isSplitting || (r.splits && r.splits.length > 0)) {
-        const val = getRowSplitValidation(r);
-        isInvalidSplit = !val.isComplete;
-      }
-      return isMissingDate || isMissingParty || isMissingAmount || isNotReady || isInvalidSplit;
-    });
-
-    if (incompleteRows.length > 0) {
-      const count = incompleteRows.length;
+    if (exportReadiness.isExcelDownloadDisabled) {
+      const count = exportReadiness.incompleteCount;
       setWarningMessage(
-        `Finish reviewing the highlighted entries before downloading. (${count} ${count === 1 ? "entry needs" : "entries need"} review)`
+        `Finish reviewing all entries before downloading. (${count} ${count === 1 ? "entry needs" : "entries need"} review)`
       );
 
       // Auto-scroll to the first incomplete row so the user can easily review & edit
-      const firstIncomplete = incompleteRows[0];
+      const firstIncomplete = exportReadiness.firstIncompleteRow;
       if (firstIncomplete && rowRefs.current[firstIncomplete.id]) {
         const prefersReducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         rowRefs.current[firstIncomplete.id]?.scrollIntoView({
@@ -2248,36 +2275,48 @@ export default function QuickPage() {
             {stage === "stage2_complete" && (
               <div className="p-4 bg-[var(--card-muted)] border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-semibold text-[var(--foreground)]">
-                    Extraction complete. Ready to download clean Excel spreadsheet.
-                  </div>
+                  {exportReadiness.isExcelDownloadDisabled ? (
+                    <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>
+                        Finish reviewing all entries before downloading. ({exportReadiness.incompleteCount}{" "}
+                        {exportReadiness.incompleteCount === 1 ? "entry needs" : "entries need"} review)
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-xs font-semibold text-[var(--foreground)]">
+                      Extraction complete. Ready to download clean Excel spreadsheet.
+                    </div>
+                  )}
                   <div className="text-[11px] text-[var(--muted)] italic mt-0.5">
                     By downloading, you confirm you’ve reviewed the entries above.
                   </div>
                 </div>
-                {isFinalBatch ? (
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {currentBatchIndex < totalBatches - 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setCurrentBatchIndex((prev) => Math.min(totalBatches - 1, prev + 1))}
+                      className="px-4 py-2 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-sm hover:opacity-90 transition-all cursor-pointer flex items-center gap-1.5"
+                      aria-label="Review next batch"
+                    >
+                      <span>Review next batch</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  )}
+
                   <button
                     type="button"
-                    disabled={Boolean(invalidSplitRowInBatch)}
+                    disabled={exportReadiness.isExcelDownloadDisabled}
                     onClick={handleDownloadExcel}
-                    className="btn-theme-accent text-xs px-4 py-2 rounded-lg font-extrabold flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-sm shrink-0"
+                    className="btn-theme-accent text-xs px-4 py-2 rounded-lg font-extrabold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:opacity-50 disabled:shadow-none transition-all shadow-sm"
                     aria-label="Review complete — Generate Excel"
                   >
                     <FileSpreadsheet className="w-4 h-4" />
-                    <span>Review complete — Generate Excel</span>
+                    <span>Generate Excel</span>
                   </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={Boolean(invalidSplitRowInBatch)}
-                    onClick={() => setCurrentBatchIndex((prev) => Math.min(totalBatches - 1, prev + 1))}
-                    className="px-4 py-2 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-sm shrink-0 flex items-center gap-1.5"
-                    aria-label="Review next batch"
-                  >
-                    <span>Review next batch</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                )}
+                </div>
               </div>
             )}
           </div>
